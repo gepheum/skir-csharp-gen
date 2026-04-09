@@ -1,0 +1,11 @@
+.DS_Store
+.gradle
+.idea
+bin
+build
+dist
+node_modules
+obj
+skir-external
+skirout
+tsconfig.tsbuildinfo
