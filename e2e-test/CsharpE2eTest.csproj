@@ -16,4 +16,9 @@
     </Compile>
   </ItemGroup>
 
+  <!-- Exclude the unit-test sub-project from this project's compile glob. -->
+  <ItemGroup>
+    <Compile Remove="SkirClientTest/**/*.cs" />
+  </ItemGroup>
+
 </Project>

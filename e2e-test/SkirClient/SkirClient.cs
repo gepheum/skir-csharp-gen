@@ -2,6 +2,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 
 namespace SkirClient;
 
@@ -74,6 +76,100 @@ public abstract class Serializer<T>
 }
 
 // =============================================================================
+// ITypeAdapter<T>
+// =============================================================================
+
+/// <summary>
+/// Internal serialization contract for a single type.
+/// Implemented by primitive adapters and used by
+/// <see cref="TypeAdapterSerializer{T}"/> to back a <see cref="Serializer{T}"/>.
+/// </summary>
+internal interface ITypeAdapter<T>
+{
+    /// <summary>Returns <c>true</c> when <paramref name="input"/> equals the default (zero) value.</summary>
+    bool IsDefault(T input);
+
+    /// <summary>
+    /// Appends the JSON representation of <paramref name="input"/> to
+    /// <paramref name="output"/>. When <paramref name="eolIndent"/> is
+    /// <c>null</c> the output is dense; otherwise it is readable and
+    /// <paramref name="eolIndent"/> is <c>"\n"</c> followed by the
+    /// current indentation prefix.
+    /// </summary>
+    void ToJson(T input, string? eolIndent, StringBuilder output);
+
+    /// <summary>Deserializes a value from a parsed JSON token.</summary>
+    T FromJson(JsonElement json, bool keepUnrecognizedValues);
+
+    /// <summary>Appends the binary encoding of <paramref name="input"/> to <paramref name="output"/>.</summary>
+    void Encode(T input, List<byte> output);
+
+    /// <summary>
+    /// Reads one encoded value from <paramref name="data"/> starting at
+    /// <paramref name="offset"/>, advancing <paramref name="offset"/> past
+    /// the consumed bytes.
+    /// </summary>
+    T Decode(byte[] data, ref int offset, bool keepUnrecognizedValues);
+
+    /// <summary>Returns the reflection descriptor for this type.</summary>
+    TypeDescriptor TypeDescriptor { get; }
+}
+
+// =============================================================================
+// TypeAdapterSerializer<T>
+// =============================================================================
+
+/// <summary>
+/// A <see cref="Serializer{T}"/> that delegates all work to an
+/// <see cref="ITypeAdapter{T}"/>. Used for primitive and composite types.
+/// </summary>
+internal sealed class TypeAdapterSerializer<T> : Serializer<T>
+{
+    private readonly ITypeAdapter<T> _adapter;
+
+    internal TypeAdapterSerializer(ITypeAdapter<T> adapter) => _adapter = adapter;
+
+    public override string ToJson(T value, bool readable = false)
+    {
+        var sb = new StringBuilder();
+        _adapter.ToJson(value, readable ? "\n" : null, sb);
+        return sb.ToString();
+    }
+
+    public override byte[] ToBytes(T value)
+    {
+        var output = new List<byte>(5);
+        output.Add((byte)'s');
+        output.Add((byte)'k');
+        output.Add((byte)'i');
+        output.Add((byte)'r');
+        _adapter.Encode(value, output);
+        return output.ToArray();
+    }
+
+    public override T FromJson(string json, bool keepUnrecognizedValues = false)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return _adapter.FromJson(doc.RootElement, keepUnrecognizedValues);
+    }
+
+    public override T FromBytes(byte[] bytes, bool keepUnrecognizedValues = false)
+    {
+        if (bytes.Length >= 4 &&
+            bytes[0] == 's' && bytes[1] == 'k' &&
+            bytes[2] == 'i' && bytes[3] == 'r')
+        {
+            int offset = 4;
+            return _adapter.Decode(bytes, ref offset, keepUnrecognizedValues);
+        }
+        // No magic prefix — treat payload as UTF-8 JSON.
+        return FromJson(Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
+    }
+
+    public override TypeDescriptor TypeDescriptor => _adapter.TypeDescriptor;
+}
+
+// =============================================================================
 // Serializers — primitives and composites
 // =============================================================================
 
@@ -82,7 +178,7 @@ public abstract class Serializer<T>
 /// </summary>
 public static class Serializers
 {
-    public static Serializer<bool>     Bool      { get; } = new BoolSerializer_();
+    public static Serializer<bool>     Bool      { get; } = new TypeAdapterSerializer<bool>(new BoolAdapter());
     public static Serializer<int>      Int32     { get; } = new Int32Serializer_();
     public static Serializer<long>     Int64     { get; } = new Int64Serializer_();
     public static Serializer<ulong>    Hash64    { get; } = new Hash64Serializer_();
@@ -104,16 +200,48 @@ public static class Serializers
     public static Serializer<IReadOnlyList<T>> Array<T>(Serializer<T> inner)
         => new ArraySerializer_<T>(inner);
 
+    // ---- BoolAdapter ----
+
+    private sealed class BoolAdapter : ITypeAdapter<bool>
+    {
+        public bool IsDefault(bool input) => !input;
+
+        public void ToJson(bool input, string? eolIndent, StringBuilder output)
+        {
+            if (eolIndent != null)
+                output.Append(input ? "true" : "false");
+            else
+                output.Append(input ? '1' : '0');
+        }
+
+        public bool FromJson(JsonElement json, bool keepUnrecognizedValues)
+        {
+            return json.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Number =>
+                    json.TryGetInt64(out long i) ? i != 0 : json.GetDouble() != 0.0,
+                JsonValueKind.String => json.GetString() != "0",
+                _ => false,
+            };
+        }
+
+        public void Encode(bool input, List<byte> output) =>
+            output.Add(input ? (byte)1 : (byte)0);
+
+        public bool Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        {
+            if (offset >= data.Length)
+                throw new InvalidOperationException("Unexpected end of input");
+            return data[offset++] != 0;
+        }
+
+        public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Bool);
+    }
+
     // ---- Primitive stubs ----
 
-    private sealed class BoolSerializer_ : Serializer<bool>
-    {
-        public override string ToJson(bool value, bool readable = false) => value ? "1" : "0";
-        public override byte[] ToBytes(bool value)  => [];
-        public override bool FromJson(string json, bool keepUnrecognizedValues = false)  => json == "1";
-        public override bool FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => false;
-        public override TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor("bool");
-    }
 
     private sealed class Int32Serializer_ : Serializer<int>
     {
