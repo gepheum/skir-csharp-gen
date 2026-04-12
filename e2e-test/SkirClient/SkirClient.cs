@@ -179,14 +179,14 @@ internal sealed class TypeAdapterSerializer<T> : Serializer<T>
 public static class Serializers
 {
     public static Serializer<bool>     Bool      { get; } = new TypeAdapterSerializer<bool>(new BoolAdapter());
-    public static Serializer<int>      Int32     { get; } = new Int32Serializer_();
-    public static Serializer<long>     Int64     { get; } = new Int64Serializer_();
-    public static Serializer<ulong>    Hash64    { get; } = new Hash64Serializer_();
+    public static Serializer<int>      Int32     { get; } = new TypeAdapterSerializer<int>(new Int32Adapter());
+    public static Serializer<long>     Int64     { get; } = new TypeAdapterSerializer<long>(new Int64Adapter());
+    public static Serializer<ulong>    Hash64    { get; } = new TypeAdapterSerializer<ulong>(new Hash64Adapter());
     public static Serializer<float>    Float32   { get; } = new Float32Serializer_();
     public static Serializer<double>   Float64   { get; } = new Float64Serializer_();
-    public static Serializer<string>   String    { get; } = new StringSerializer_();
-    public static Serializer<byte[]>   Bytes     { get; } = new BytesSerializer_();
-    public static Serializer<DateTime> Timestamp { get; } = new TimestampSerializer_();
+    public static Serializer<string>   String    { get; } = new TypeAdapterSerializer<string>(new StringAdapter());
+    public static Serializer<byte[]>   Bytes     { get; } = new TypeAdapterSerializer<byte[]>(new BytesAdapter());
+    public static Serializer<DateTimeOffset> Timestamp { get; } = new TypeAdapterSerializer<DateTimeOffset>(new TimestampAdapter());
 
     /// <summary>Serializer for an optional (nullable) reference type.</summary>
     public static Serializer<T?> Optional<T>(Serializer<T> inner) where T : class
@@ -240,38 +240,312 @@ public static class Serializers
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Bool);
     }
 
-    // ---- Primitive stubs ----
+    // ---- Binary wire-format helpers ----
 
-
-    private sealed class Int32Serializer_ : Serializer<int>
+    // Returns bytes in little-endian order regardless of host endianness.
+    private static byte[] LE(byte[] bytes)
     {
-        public override string ToJson(int value, bool readable = false) => value.ToString();
-        public override byte[] ToBytes(int value)  => [];
-        public override int FromJson(string json, bool keepUnrecognizedValues = false)  => int.Parse(json);
-        public override int FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => 0;
-        public override TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor("int32");
+        if (!BitConverter.IsLittleEndian) System.Array.Reverse(bytes);
+        return bytes;
     }
 
-    private sealed class Int64Serializer_ : Serializer<long>
+    // Encodes an i32 using the skir variable-length wire format.
+    //   0..=231         → single byte
+    //   232..=65535     → wire 232 + u16 LE
+    //   65536..=i32.MAX → wire 233 + u32 LE
+    //   -256..=-1       → wire 235 + u8(v+256)
+    //   -65536..=-257   → wire 236 + u16 LE(v+65536)
+    //   i32.MIN..=-65537→ wire 237 + i32 LE
+    private static void EncodeI32(int v, List<byte> output)
     {
-        // int64 is encoded as a quoted string in JSON to preserve precision for
-        // JavaScript clients (which use 64-bit floats).
-        public override string ToJson(long value, bool readable = false) => $"\"{value}\"";
-        public override byte[] ToBytes(long value)  => [];
-        public override long FromJson(string json, bool keepUnrecognizedValues = false)  => long.Parse(json.Trim('"'));
-        public override long FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => 0L;
-        public override TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor("int64");
+        if (v >= 0)
+        {
+            if (v <= 231) { output.Add((byte)v); }
+            else if (v <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)v))); }
+            else { output.Add(233); output.AddRange(LE(BitConverter.GetBytes((uint)v))); }
+        }
+        else
+        {
+            if (v >= -256) { output.Add(235); output.Add((byte)(v + 256)); }
+            else if (v >= -65536) { output.Add(236); output.AddRange(LE(BitConverter.GetBytes((ushort)(v + 65536)))); }
+            else { output.Add(237); output.AddRange(LE(BitConverter.GetBytes(v))); }
+        }
     }
 
-    private sealed class Hash64Serializer_ : Serializer<ulong>
+    // Decodes the body of a variable-length number given the already-consumed wire byte.
+    private static long DecodeNumberBody(byte wire, byte[] data, ref int offset)
     {
-        // hash64 is also encoded as a quoted string for the same reason as int64.
-        public override string ToJson(ulong value, bool readable = false) => $"\"{value}\"";
-        public override byte[] ToBytes(ulong value)  => [];
-        public override ulong FromJson(string json, bool keepUnrecognizedValues = false)  => ulong.Parse(json.Trim('"'));
-        public override ulong FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => 0UL;
-        public override TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor("hash64");
+        switch (wire)
+        {
+            case <= 231: return wire;
+            case 232: return ReadU16(data, ref offset);
+            case 233: return ReadU32(data, ref offset);
+            case 234: return (long)ReadU64(data, ref offset); // reinterpret bits
+            case 235: return ReadU8(data, ref offset) - 256L;
+            case 236: return ReadU16(data, ref offset) - 65536L;
+            case 237: return (int)ReadU32(data, ref offset);
+            case 238:
+            case 239: return (long)ReadU64(data, ref offset);
+            default: return 0;
+        }
     }
+
+    internal static long DecodeNumber(byte[] data, ref int offset)
+    {
+        byte wire = ReadU8(data, ref offset);
+        return DecodeNumberBody(wire, data, ref offset);
+    }
+
+    private static byte ReadU8(byte[] data, ref int offset)
+    {
+        if (offset >= data.Length) throw new InvalidOperationException("Unexpected end of input");
+        return data[offset++];
+    }
+
+    private static ushort ReadU16(byte[] data, ref int offset)
+    {
+        if (offset + 2 > data.Length) throw new InvalidOperationException("Unexpected end of input");
+        var v = BitConverter.ToUInt16(data, offset);
+        offset += 2;
+        return v;
+    }
+
+    private static uint ReadU32(byte[] data, ref int offset)
+    {
+        if (offset + 4 > data.Length) throw new InvalidOperationException("Unexpected end of input");
+        var v = BitConverter.ToUInt32(data, offset);
+        offset += 4;
+        return v;
+    }
+
+    private static ulong ReadU64(byte[] data, ref int offset)
+    {
+        if (offset + 8 > data.Length) throw new InvalidOperationException("Unexpected end of input");
+        var v = BitConverter.ToUInt64(data, offset);
+        offset += 8;
+        return v;
+    }
+
+    // ---- Timestamp / String / Bytes helpers ----
+
+    private const long MinTimestampMillis = -8_640_000_000_000_000L;
+    private const long MaxTimestampMillis =  8_640_000_000_000_000L;
+
+    // Converts a DateTimeOffset to unix milliseconds, clamped to the Skir wire range.
+    private static long DateTimeOffsetToMillis(DateTimeOffset dto) =>
+        Math.Clamp(dto.ToUnixTimeMilliseconds(), MinTimestampMillis, MaxTimestampMillis);
+
+    // Creates a DateTimeOffset (UTC, offset zero) from unix milliseconds.
+    // Values outside DateTimeOffset's representable range are clamped.
+    private static DateTimeOffset MillisToDateTimeOffset(long ms)
+    {
+        ms = Math.Clamp(ms, MinTimestampMillis, MaxTimestampMillis);
+        ms = Math.Clamp(ms,
+            DateTimeOffset.MinValue.ToUnixTimeMilliseconds(),
+            DateTimeOffset.MaxValue.ToUnixTimeMilliseconds());
+        return DateTimeOffset.FromUnixTimeMilliseconds(ms);
+    }
+
+    // Converts unix milliseconds to an ISO-8601 UTC string, e.g. "2009-02-13T23:31:30.000Z".
+    private static string MillisToIso8601(long ms)
+    {
+        ms = Math.Clamp(ms,
+            DateTimeOffset.MinValue.ToUnixTimeMilliseconds(),
+            DateTimeOffset.MaxValue.ToUnixTimeMilliseconds());
+        return DateTimeOffset.FromUnixTimeMilliseconds(ms)
+            .ToString("yyyy-MM-ddTHH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + "Z";
+    }
+
+    // Encodes a non-negative length using the skir variable-length uint32 scheme.
+    //   0..=231   → single byte
+    //   232..=65535 → wire 232 + u16 LE
+    //   else      → wire 233 + u32 LE
+    private static void EncodeUint32(uint n, List<byte> output)
+    {
+        if (n <= 231) { output.Add((byte)n); }
+        else if (n <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)n))); }
+        else { output.Add(233); output.AddRange(LE(BitConverter.GetBytes(n))); }
+    }
+
+    // Writes s as a JSON string literal (with surrounding quotes) using Skir escaping rules.
+    private static void WriteJsonString(string s, StringBuilder output)
+    {
+        output.Append('"');
+        foreach (char c in s)
+        {
+            switch (c)
+            {
+                case '"':  output.Append("\\\""); break;
+                case '\\': output.Append("\\\\"); break;
+                case '\n': output.Append("\\n"); break;
+                case '\r': output.Append("\\r"); break;
+                case '\t': output.Append("\\t"); break;
+                case '\b': output.Append("\\b"); break;
+                case '\f': output.Append("\\f"); break;
+                default:
+                    if (c < '\x20' || c == '\x7F')
+                        output.Append($"\\u{(int)c:x4}");
+                    else
+                        output.Append(c);
+                    break;
+            }
+        }
+        output.Append('"');
+    }
+
+    // Encodes bytes as a lowercase hexadecimal string.
+    private static string EncodeHex(byte[] bytes)
+    {
+        const string HexChars = "0123456789abcdef";
+        var sb = new StringBuilder(bytes.Length * 2);
+        foreach (byte b in bytes)
+        {
+            sb.Append(HexChars[b >> 4]);
+            sb.Append(HexChars[b & 0xF]);
+        }
+        return sb.ToString();
+    }
+
+    // Decodes a lowercase or uppercase hexadecimal string.
+    private static byte[] DecodeHex(ReadOnlySpan<char> s)
+    {
+        if (s.Length % 2 != 0)
+            throw new ArgumentException($"Odd hex string length: {s.Length}");
+        byte[] result = new byte[s.Length / 2];
+        for (int i = 0; i < result.Length; i++)
+            result[i] = byte.Parse(s.Slice(i * 2, 2), System.Globalization.NumberStyles.HexNumber);
+        return result;
+    }
+
+    // ---- Primitive adapters ----
+
+    private sealed class Int32Adapter : ITypeAdapter<int>
+    {
+        public bool IsDefault(int input) => input == 0;
+
+        // Same in both dense and readable modes — always a JSON number.
+        public void ToJson(int input, string? eolIndent, StringBuilder output) =>
+            output.Append(input);
+
+        public int FromJson(JsonElement json, bool keepUnrecognizedValues)
+        {
+            return json.ValueKind switch
+            {
+                JsonValueKind.Number =>
+                    json.TryGetInt64(out long i) ? (int)i : (int)json.GetDouble(),
+                // Mirrors TypeScript: +(json as string) | 0
+                JsonValueKind.String =>
+                    double.TryParse(json.GetString(), System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out double d)
+                        ? (int)d : 0,
+                _ => 0,
+            };
+        }
+
+        public void Encode(int input, List<byte> output) => EncodeI32(input, output);
+
+        public int Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+            (int)DecodeNumber(data, ref offset);
+
+        public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Int32);
+    }
+
+    // Values within [-MAX_SAFE_INT, MAX_SAFE_INT] are emitted as JSON numbers;
+    // larger values are quoted strings, matching JS Number.MAX_SAFE_INTEGER.
+    private const long MaxSafeInt64Json = 9_007_199_254_740_991L;
+
+    private sealed class Int64Adapter : ITypeAdapter<long>
+    {
+        public bool IsDefault(long input) => input == 0;
+
+        public void ToJson(long input, string? eolIndent, StringBuilder output)
+        {
+            if (input >= -MaxSafeInt64Json && input <= MaxSafeInt64Json)
+                output.Append(input);
+            else
+            {
+                output.Append('"');
+                output.Append(input);
+                output.Append('"');
+            }
+        }
+
+        public long FromJson(JsonElement json, bool keepUnrecognizedValues)
+        {
+            return json.ValueKind switch
+            {
+                JsonValueKind.Number =>
+                    json.TryGetInt64(out long i) ? i : (long)Math.Round(json.GetDouble()),
+                JsonValueKind.String =>
+                    long.TryParse(json.GetString(), out long l) ? l : 0L,
+                _ => 0L,
+            };
+        }
+
+        public void Encode(long input, List<byte> output)
+        {
+            if (input >= int.MinValue && input <= int.MaxValue)
+                EncodeI32((int)input, output);
+            else
+            {
+                output.Add(238);
+                output.AddRange(LE(BitConverter.GetBytes(input)));
+            }
+        }
+
+        public long Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+            DecodeNumber(data, ref offset);
+
+        public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Int64);
+    }
+
+    private const ulong MaxSafeHash64Json = 9_007_199_254_740_991UL;
+
+    private sealed class Hash64Adapter : ITypeAdapter<ulong>
+    {
+        public bool IsDefault(ulong input) => input == 0;
+
+        public void ToJson(ulong input, string? eolIndent, StringBuilder output)
+        {
+            if (input <= MaxSafeHash64Json)
+                output.Append(input);
+            else
+            {
+                output.Append('"');
+                output.Append(input);
+                output.Append('"');
+            }
+        }
+
+        public ulong FromJson(JsonElement json, bool keepUnrecognizedValues)
+        {
+            return json.ValueKind switch
+            {
+                JsonValueKind.Number =>
+                    json.TryGetUInt64(out ulong u) ? u :
+                    json.TryGetDouble(out double d) ? (d < 0.0 ? 0UL : (ulong)Math.Round(d)) : 0UL,
+                JsonValueKind.String =>
+                    ulong.TryParse(json.GetString(), out ulong u) ? u : 0UL,
+                _ => 0UL,
+            };
+        }
+
+        public void Encode(ulong input, List<byte> output)
+        {
+            if (input <= 231) { output.Add((byte)input); }
+            else if (input <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)input))); }
+            else if (input <= 4_294_967_295UL) { output.Add(233); output.AddRange(LE(BitConverter.GetBytes((uint)input))); }
+            else { output.Add(234); output.AddRange(LE(BitConverter.GetBytes(input))); }
+        }
+
+        public ulong Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+            (ulong)DecodeNumber(data, ref offset);
+
+        public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Hash64);
+    }
+
+    // ---- Remaining primitive stubs ----
+
 
     private sealed class Float32Serializer_ : Serializer<float>
     {
@@ -291,38 +565,181 @@ public static class Serializers
         public override TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor("float64");
     }
 
-    private sealed class StringSerializer_ : Serializer<string>
+    private sealed class TimestampAdapter : ITypeAdapter<DateTimeOffset>
     {
-        public override string ToJson(string value, bool readable = false) => $"\"{value}\"";
-        public override byte[] ToBytes(string value)   => [];
-        public override string FromJson(string json, bool keepUnrecognizedValues = false)   => json.Trim('"');
-        public override string FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => "";
-        public override TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor("string");
-    }
+        public bool IsDefault(DateTimeOffset input) => DateTimeOffsetToMillis(input) == 0;
 
-    private sealed class BytesSerializer_ : Serializer<byte[]>
-    {
-        public override string ToJson(byte[] value, bool readable = false)
-            => $"\"{Convert.ToBase64String(value)}\"";
-        public override byte[] ToBytes(byte[] value)   => [];
-        public override byte[] FromJson(string json, bool keepUnrecognizedValues = false)   => Convert.FromBase64String(json.Trim('"'));
-        public override byte[] FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => [];
-        public override TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor("bytes");
-    }
-
-    private sealed class TimestampSerializer_ : Serializer<DateTime>
-    {
-        public override string ToJson(DateTime value, bool readable = false)
+        // Dense: unix millis as a JSON number.
+        // Readable: {"unix_millis": N, "formatted": "<ISO-8601>"} with indentation.
+        public void ToJson(DateTimeOffset input, string? eolIndent, StringBuilder output)
         {
-            var unixMillis = (long)(value.ToUniversalTime() - DateTime.UnixEpoch).TotalMilliseconds;
-            if (readable)
-                return $"{{\"unix_millis\":{unixMillis},\"formatted\":\"{value.ToUniversalTime():O}\"}}";
-            return unixMillis.ToString();
+            long ms = DateTimeOffsetToMillis(input);
+            if (eolIndent != null)
+            {
+                string child = eolIndent + "  ";
+                output.Append('{');
+                output.Append(child);
+                output.Append("\"unix_millis\": ");
+                output.Append(ms);
+                output.Append(',');
+                output.Append(child);
+                output.Append("\"formatted\": \"");
+                output.Append(MillisToIso8601(ms));
+                output.Append('"');
+                output.Append(eolIndent);
+                output.Append('}');
+            }
+            else
+            {
+                output.Append(ms);
+            }
         }
-        public override byte[] ToBytes(DateTime value)  => [];
-        public override DateTime FromJson(string json, bool keepUnrecognizedValues = false)  => DateTime.UnixEpoch;
-        public override DateTime FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => DateTime.UnixEpoch;
-        public override TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor("timestamp");
+
+        public DateTimeOffset FromJson(JsonElement json, bool keepUnrecognizedValues)
+        {
+            long ms;
+            switch (json.ValueKind)
+            {
+                case JsonValueKind.Number:
+                    ms = json.TryGetInt64(out long i) ? i : (long)Math.Round(json.GetDouble());
+                    break;
+                case JsonValueKind.String:
+                    ms = double.TryParse(json.GetString(),
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out double d)
+                        ? (long)Math.Round(d) : 0L;
+                    break;
+                case JsonValueKind.Object:
+                    if (json.TryGetProperty("unix_millis", out JsonElement field))
+                        return FromJson(field, false);
+                    ms = 0;
+                    break;
+                default:
+                    ms = 0;
+                    break;
+            }
+            return MillisToDateTimeOffset(ms);
+        }
+
+        // ms == 0 → wire 0; else → wire 239 + i64 LE.
+        public void Encode(DateTimeOffset input, List<byte> output)
+        {
+            long ms = DateTimeOffsetToMillis(input);
+            if (ms == 0) { output.Add(0); }
+            else { output.Add(239); output.AddRange(LE(BitConverter.GetBytes(ms))); }
+        }
+
+        public DateTimeOffset Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+            MillisToDateTimeOffset(DecodeNumber(data, ref offset));
+
+        public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Timestamp);
+    }
+
+    private sealed class StringAdapter : ITypeAdapter<string>
+    {
+        public bool IsDefault(string input) => input.Length == 0;
+
+        // Same in both dense and readable modes — always a JSON string.
+        public void ToJson(string input, string? eolIndent, StringBuilder output) =>
+            WriteJsonString(input, output);
+
+        public string FromJson(JsonElement json, bool keepUnrecognizedValues)
+        {
+            return json.ValueKind switch
+            {
+                JsonValueKind.String => json.GetString()!,
+                _ => "",
+            };
+        }
+
+        // empty → wire 242; nonempty → wire 243 + encode_uint32(len) + UTF-8 bytes.
+        public void Encode(string input, List<byte> output)
+        {
+            if (input.Length == 0)
+            {
+                output.Add(242);
+            }
+            else
+            {
+                byte[] utf8 = Encoding.UTF8.GetBytes(input);
+                output.Add(243);
+                EncodeUint32((uint)utf8.Length, output);
+                output.AddRange(utf8);
+            }
+        }
+
+        public string Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        {
+            byte wire = ReadU8(data, ref offset);
+            if (wire == 0 || wire == 242) return "";
+            int n = (int)DecodeNumber(data, ref offset);
+            if (offset + n > data.Length) throw new InvalidOperationException("Unexpected end of input");
+            string s = Encoding.UTF8.GetString(data, offset, n);
+            offset += n;
+            return s;
+        }
+
+        public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.String);
+    }
+
+    private sealed class BytesAdapter : ITypeAdapter<byte[]>
+    {
+        public bool IsDefault(byte[] input) => input.Length == 0;
+
+        // Dense: standard base64 with = padding.
+        // Readable: "hex:" + lowercase hex string.
+        public void ToJson(byte[] input, string? eolIndent, StringBuilder output)
+        {
+            output.Append('"');
+            if (eolIndent != null)
+            {
+                output.Append("hex:");
+                output.Append(EncodeHex(input));
+            }
+            else
+            {
+                output.Append(Convert.ToBase64String(input));
+            }
+            output.Append('"');
+        }
+
+        public byte[] FromJson(JsonElement json, bool keepUnrecognizedValues)
+        {
+            if (json.ValueKind != JsonValueKind.String) return [];
+            string s = json.GetString()!;
+            return s.StartsWith("hex:", StringComparison.Ordinal)
+                ? DecodeHex(s.AsSpan(4))
+                : Convert.FromBase64String(s);
+        }
+
+        // empty → wire 244; nonempty → wire 245 + encode_uint32(len) + raw bytes.
+        public void Encode(byte[] input, List<byte> output)
+        {
+            if (input.Length == 0)
+            {
+                output.Add(244);
+            }
+            else
+            {
+                output.Add(245);
+                EncodeUint32((uint)input.Length, output);
+                output.AddRange(input);
+            }
+        }
+
+        public byte[] Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        {
+            byte wire = ReadU8(data, ref offset);
+            if (wire == 0 || wire == 244) return [];
+            int n = (int)DecodeNumber(data, ref offset);
+            if (offset + n > data.Length) throw new InvalidOperationException("Unexpected end of input");
+            byte[] result = new byte[n];
+            System.Array.Copy(data, offset, result, 0, n);
+            offset += n;
+            return result;
+        }
+
+        public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Bytes);
     }
 
     // ---- Composite stubs ----
