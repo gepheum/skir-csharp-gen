@@ -8,24 +8,6 @@ using System.Text.Json;
 namespace SkirClient;
 
 // =============================================================================
-// SkirUnrecognized
-// =============================================================================
-
-/// <summary>
-/// Holds fields encountered during deserialization that are not declared in the
-/// current schema version. Preserved on re-serialization, ensuring that a value
-/// round-tripped by an older client does not silently drop fields added by a
-/// newer schema. Completely opaque to user code: you never construct or inspect
-/// this type directly.
-/// </summary>
-public sealed class SkirUnrecognized
-{
-    // Intentionally opaque. The SkirClient library constructs instances
-    // during deserialization; user code never creates them.
-    internal SkirUnrecognized() { }
-}
-
-// =============================================================================
 // Serializer<T>
 // =============================================================================
 
