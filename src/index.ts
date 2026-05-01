@@ -154,7 +154,7 @@ class CsharpSourceFileGenerator {
         ? `new() { ${requiredInits.join(", ")} }`
         : "new()";
     this.lines.push(
-      `${bodyIndent}public static ${name} DEFAULT { get; } = ${defaultInit};`,
+      `${bodyIndent}public static readonly ${name} DEFAULT = ${defaultInit};`,
     );
 
     this.lines.push(`${indent}}`);

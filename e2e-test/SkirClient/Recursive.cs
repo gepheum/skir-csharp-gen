@@ -51,7 +51,9 @@ public readonly struct Recursive<T>
     /// <summary>
     /// Returns Zig's <c>default_value</c> branch.
     /// </summary>
-    public static Recursive<T> DefaultValue => new(isDefaultValue: true, box: null);
+    public static readonly Recursive<T> DefaultValue = new(
+        isDefaultValue: true,
+        box: null);
 
     /// <summary>
     /// Returns Zig's <c>value</c> branch.
