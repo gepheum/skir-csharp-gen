@@ -108,9 +108,6 @@ class CsharpSourceFileGenerator {
   ): void {
     const indent = "    ".repeat(indentLevel);
     const bodyIndent = "    ".repeat(indentLevel + 1);
-    const hardRecursiveFields = record.record.fields.filter(
-      (f) => f.type && f.isRecursive === "hard",
-    );
 
     this.lines.push(`${indent}public sealed record ${name}`);
     this.lines.push(`${indent}{`);
@@ -119,9 +116,7 @@ class CsharpSourceFileGenerator {
     // nested type declarations inside a struct body.
     const nestedTypeNamesInStruct = new Set<string>();
 
-    // Collect required-field initializers for the DEFAULT static property.
-    // Hard-recursive fields use a backing field with lazy default and are NOT
-    // required (making them required would cause circular static initialization).
+    // Collect field initializers for the DEFAULT static property.
     const requiredInits: string[] = [];
 
     const usedFieldNames = new Set<string>(nestedTypeNamesInStruct);
@@ -136,32 +131,13 @@ class CsharpSourceFileGenerator {
       }
       usedFieldNames.add(propertyName);
 
-      const fieldType = this.typeSpeller.getCsharpType(field.type);
-      const defaultExpr = this.typeSpeller.getDefaultExpr(
-        field.type,
-        field.isRecursive,
-      );
+      const fieldType = this.typeSpeller.getCsharpFieldType(field);
+      const defaultExpr = this.typeSpeller.getFieldDefaultExpr(field);
 
-      if (field.isRecursive === "hard") {
-        // Not required: circular static initialization would cause infinite
-        // recursion if we tried to set this field in DEFAULT's initializer.
-        const backingName = `_${propertyName}_rec`;
-        this.lines.push(
-          `${bodyIndent}private ${fieldType}? ${backingName} = null;`,
-        );
-        this.lines.push(`${bodyIndent}public ${fieldType} ${propertyName}`);
-        this.lines.push(`${bodyIndent}{`);
-        this.lines.push(
-          `${bodyIndent}    get => ${backingName} ?? ${fieldType}.DEFAULT;`,
-        );
-        this.lines.push(`${bodyIndent}    init => ${backingName} = value;`);
-        this.lines.push(`${bodyIndent}}`);
-      } else {
-        this.lines.push(
-          `${bodyIndent}public required ${fieldType} ${propertyName} { get; init; } = ${defaultExpr};`,
-        );
-        requiredInits.push(`${propertyName} = ${defaultExpr}`);
-      }
+      this.lines.push(
+        `${bodyIndent}public required ${fieldType} ${propertyName} { get; init; }`,
+      );
+      requiredInits.push(`${propertyName} = ${defaultExpr}`);
     }
 
     if (record.record.fields.length > 0) {
@@ -180,13 +156,6 @@ class CsharpSourceFileGenerator {
     this.lines.push(
       `${bodyIndent}public static ${name} DEFAULT { get; } = ${defaultInit};`,
     );
-
-    if (hardRecursiveFields.length > 0) {
-      this.lines.push("");
-      this.lines.push(
-        `${bodyIndent}internal global::SkirClient.UnrecognizedFields<${name}>? _GetUnrecognized() => _unrecognized;`,
-      );
-    }
 
     this.lines.push(`${indent}}`);
   }

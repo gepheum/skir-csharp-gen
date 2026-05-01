@@ -1,4 +1,9 @@
-import type { RecordKey, RecordLocation, ResolvedType } from "skir-internal";
+import type {
+  Field,
+  RecordKey,
+  RecordLocation,
+  ResolvedType,
+} from "skir-internal";
 import { getTypeName, modulePathToNamespace } from "./naming.js";
 
 /**
@@ -52,20 +57,52 @@ export class TypeSpeller {
     }
   }
 
-  getDefaultExpr(
-    type: ResolvedType,
-    fieldRecursivity?: false | "soft" | "via-optional" | "hard",
-  ): string {
+  getCsharpFieldType(field: Field): string {
+    if (!field.type) {
+      throw new Error("Cannot spell a C# field type for a field without type.");
+    }
+
+    if (field.isRecursive === "hard") {
+      const otherType = this.getCsharpType(field.type);
+      return `global::SkirClient.Recursive<${otherType}>`;
+    }
+
+    if (field.isRecursive === "via-optional") {
+      if (field.type.kind !== "optional") {
+        throw new Error(
+          "via-optional recursive field must have an optional underlying type.",
+        );
+      }
+      const otherType = this.getCsharpType(field.type.other);
+      return `global::SkirClient.Recursive<${otherType}>?`;
+    }
+
+    return this.getCsharpType(field.type);
+  }
+
+  getFieldDefaultExpr(field: Field): string {
+    if (!field.type) {
+      throw new Error(
+        "Cannot spell a C# field default expression for a field without type.",
+      );
+    }
+
+    if (field.isRecursive === "hard") {
+      const fieldType = this.getCsharpFieldType(field);
+      return `${fieldType}.DefaultValue`;
+    }
+
+    if (field.isRecursive === "via-optional") {
+      return "null";
+    }
+
+    return this.getDefaultExpr(field.type);
+  }
+
+  getDefaultExpr(type: ResolvedType): string {
     switch (type.kind) {
       case "record": {
-        const recordLocation = this.recordMap.get(type.key)!;
         const csharpType = this.getCsharpType(type);
-        if (fieldRecursivity === "hard") {
-          return "null";
-        }
-        if (recordLocation.record.recordType === "struct") {
-          return `${csharpType}.DEFAULT`;
-        }
         return `${csharpType}.DEFAULT`;
       }
       case "array": {
