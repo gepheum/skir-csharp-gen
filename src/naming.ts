@@ -1,0 +1,186 @@
+import { convertCase, type Field, type RecordLocation } from "skir-internal";
+
+const CSHARP_KEYWORDS = new Set<string>([
+  "abstract",
+  "as",
+  "base",
+  "bool",
+  "break",
+  "byte",
+  "case",
+  "catch",
+  "char",
+  "checked",
+  "class",
+  "const",
+  "continue",
+  "decimal",
+  "default",
+  "delegate",
+  "do",
+  "double",
+  "else",
+  "enum",
+  "event",
+  "explicit",
+  "extern",
+  "false",
+  "finally",
+  "fixed",
+  "float",
+  "for",
+  "foreach",
+  "goto",
+  "if",
+  "implicit",
+  "in",
+  "int",
+  "interface",
+  "internal",
+  "is",
+  "lock",
+  "long",
+  "namespace",
+  "new",
+  "null",
+  "object",
+  "operator",
+  "out",
+  "override",
+  "params",
+  "private",
+  "protected",
+  "public",
+  "readonly",
+  "ref",
+  "return",
+  "sbyte",
+  "sealed",
+  "short",
+  "sizeof",
+  "stackalloc",
+  "static",
+  "string",
+  "struct",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "uint",
+  "ulong",
+  "unchecked",
+  "unsafe",
+  "ushort",
+  "using",
+  "virtual",
+  "void",
+  "volatile",
+  "while",
+]);
+
+// Members that are synthesized on every C# record and may not be re-declared.
+const RECORD_SYNTHESIZED_MEMBERS = new Set<string>([
+  "Clone",
+  "Equals",
+  "GetHashCode",
+  "ToString",
+  "PrintMembers",
+  "Deconstruct",
+]);
+
+const RESERVED_MEMBER_NAMES = new Set<string>(["DEFAULT"]);
+
+function escapeIdentifier(name: string): string {
+  return CSHARP_KEYWORDS.has(name) ? `${name}_` : name;
+}
+
+export function isRecordSynthesizedMember(name: string): boolean {
+  return RECORD_SYNTHESIZED_MEMBERS.has(name);
+}
+
+function toTypeSegment(rawName: string): string {
+  const upperCamel = convertCase(rawName, "UpperCamel");
+  const escaped = escapeIdentifier(upperCamel);
+  return escaped.length > 0 ? escaped : "_";
+}
+
+/**
+ * Derives a C# namespace from a skir module path.
+ * Examples:
+ *   "full_name.skir"     -> "Skirout.FullName"
+ *   "vehicles/car.skir" -> "Skirout.Vehicles.Car"
+ */
+export function modulePathToNamespace(modulePath: string): string {
+  const segments = modulePath
+    .replace(/^@/, "external/")
+    .replace(/\.skir$/, "")
+    .split("/");
+  const pascal = segments
+    .map((s) => toTypeSegment(s.replace(/-/g, "_")))
+    .join(".");
+  return `Skirout.${pascal}`;
+}
+
+/**
+ * Returns the flattened C# type name for a record.
+ * Example: Outer.Inner.Deep -> Outer_Inner_Deep
+ */
+export function getTypeName(record: RecordLocation): string {
+  const parts: string[] = [];
+  for (const ancestor of record.recordAncestors) {
+    let current = toTypeSegment(ancestor.name.text);
+    const parent = parts.at(-1);
+    if (parent === current) {
+      current = `${current}_`;
+    }
+    parts.push(current);
+  }
+  return parts.join("_");
+}
+
+/** Returns the immediate C# type name of a record. */
+export function getTypeSimpleName(record: RecordLocation): string {
+  return getTypeName(record);
+}
+
+export function toFieldPropertyName(
+  field: Field,
+  enclosingTypeName: string,
+): string {
+  const base = toTypeSegment(field.name.text);
+  if (
+    RESERVED_MEMBER_NAMES.has(base) ||
+    RECORD_SYNTHESIZED_MEMBERS.has(base) ||
+    base === enclosingTypeName
+  ) {
+    return `${base}_`;
+  }
+  return base;
+}
+
+export function doVariantNamesNeedSuffix(
+  variants: readonly Field[],
+  nestedTypeNames: ReadonlySet<string>,
+): boolean {
+  const seen = new Set<string>();
+  for (const variant of variants) {
+    const candidate = toTypeSegment(variant.name.text);
+    if (
+      candidate === "UNKNOWN" ||
+      seen.has(candidate) ||
+      nestedTypeNames.has(candidate)
+    ) {
+      return true;
+    }
+    seen.add(candidate);
+  }
+  return false;
+}
+
+export function toVariantTypeName(variant: Field, addSuffix: boolean): string {
+  const base = toTypeSegment(variant.name.text);
+  const suffix = addSuffix ? (variant.type ? "Wrapper" : "Const") : "";
+  return `${base}${suffix}`;
+}

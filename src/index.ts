@@ -1,10 +1,18 @@
 import {
   type CodeGenerator,
-  convertCase,
   type Module,
+  type RecordKey,
   type RecordLocation,
 } from "skir-internal";
 import { z } from "zod";
+import {
+  doVariantNamesNeedSuffix,
+  getTypeName,
+  modulePathToNamespace,
+  toFieldPropertyName,
+  toVariantTypeName,
+} from "./naming.js";
+import { TypeSpeller } from "./type_speller.js";
 
 const Config = z.strictObject({});
 
@@ -22,6 +30,7 @@ class CsharpCodeGenerator implements CodeGenerator<Config> {
         code: new CsharpSourceFileGenerator(
           module,
           modulePathToNamespace(module.path),
+          input.recordMap,
         ).generate(),
       });
     }
@@ -29,31 +38,18 @@ class CsharpCodeGenerator implements CodeGenerator<Config> {
   }
 }
 
-/**
- * Derives a C# namespace from a skir module path.
- * Examples:
- *   "full_name.skir"     → "Skirout.FullName"
- *   "vehicles/car.skir" → "Skirout.Vehicles.Car"
- */
-function modulePathToNamespace(modulePath: string): string {
-  const segments = modulePath
-    .replace(/^@/, "external/")
-    .replace(/\.skir$/, "")
-    .split("/");
-  const pascal = segments
-    .map((s) => convertCase(s.replace(/-/g, "_"), "UpperCamel"))
-    .join(".");
-  return `Skirout.${pascal}`;
-}
-
 // Generates the code for one C# source file.
 class CsharpSourceFileGenerator {
   private readonly lines: string[] = [];
+  private readonly typeSpeller: TypeSpeller;
 
   constructor(
     private readonly module: Module,
     private readonly namespace: string,
-  ) {}
+    recordMap: ReadonlyMap<RecordKey, RecordLocation>,
+  ) {
+    this.typeSpeller = new TypeSpeller(recordMap, module.path);
+  }
 
   generate(): string {
     // http://patorjk.com/software/taag/#f=Doom&t=Do%20not%20edit
@@ -72,31 +68,22 @@ class CsharpSourceFileGenerator {
       "",
     );
 
-    // Emit only top-level records that are defined in this module.
-    // Records from other modules appear in module.records due to imports but
-    // must not be re-emitted here (they are emitted in their own .cs file).
-    const topLevelRecords = this.module.records.filter(
-      (r) =>
-        r.recordAncestors.length === 1 && r.modulePath === this.module.path,
+    // Emit all records defined in this module. Nested Skir records are emitted
+    // as top-level C# types with flattened names (e.g. Outer_Inner).
+    const moduleRecords = this.module.records.filter(
+      (r) => r.modulePath === this.module.path,
     );
 
-    for (const record of topLevelRecords) {
-      this.writeRecord(record, 0, "");
+    for (const record of moduleRecords) {
+      this.writeRecord(record, 0);
     }
 
     return this.lines.join("\n");
   }
 
-  private writeRecord(
-    record: RecordLocation,
-    indentLevel: number,
-    parentName: string,
-  ): void {
+  private writeRecord(record: RecordLocation, indentLevel: number): void {
     const indent = "    ".repeat(indentLevel);
-    const rawName = record.record.name.text;
-    // C# does not allow a nested type to share its enclosing type's name.
-    // Append '_' as a minimal fix so the skeleton still compiles.
-    const name = rawName === parentName ? rawName + "_" : rawName;
+    const name = getTypeName(record);
     const { recordType } = record.record;
 
     this.lines.push(`${indent}// ${"=".repeat(76)}`);
@@ -107,31 +94,174 @@ class CsharpSourceFileGenerator {
     this.lines.push("");
 
     if (recordType === "struct") {
-      this.lines.push(`${indent}public sealed record ${name}`);
+      this.writeStruct(record, name, indentLevel);
     } else {
-      // enum
-      this.lines.push(`${indent}public abstract record ${name}`);
+      this.writeEnum(record, name, indentLevel);
     }
-    this.lines.push(`${indent}{`);
-
-    // Emit nested records as inner types.
-    const nestedRecords = this.getDirectChildren(record);
-    for (const nested of nestedRecords) {
-      this.writeRecord(nested, indentLevel + 1, name);
-    }
-
-    this.lines.push(`${indent}}`);
     this.lines.push("");
   }
 
-  /** Returns the direct children of a given record in the module's record list. */
-  private getDirectChildren(parent: RecordLocation): RecordLocation[] {
-    const parentDepth = parent.recordAncestors.length;
-    return this.module.records.filter(
-      (r) =>
-        r.recordAncestors.length === parentDepth + 1 &&
-        r.recordAncestors[parentDepth - 1]!.key === parent.record.key,
+  private writeStruct(
+    record: RecordLocation,
+    name: string,
+    indentLevel: number,
+  ): void {
+    const indent = "    ".repeat(indentLevel);
+    const bodyIndent = "    ".repeat(indentLevel + 1);
+    const hardRecursiveFields = record.record.fields.filter(
+      (f) => f.type && f.isRecursive === "hard",
     );
+
+    this.lines.push(`${indent}public sealed record ${name}`);
+    this.lines.push(`${indent}{`);
+
+    // Nested Skir records are emitted as top-level C# types, so there are no
+    // nested type declarations inside a struct body.
+    const nestedTypeNamesInStruct = new Set<string>();
+
+    // Collect required-field initializers for the DEFAULT static property.
+    // Hard-recursive fields use a backing field with lazy default and are NOT
+    // required (making them required would cause circular static initialization).
+    const requiredInits: string[] = [];
+
+    const usedFieldNames = new Set<string>(nestedTypeNamesInStruct);
+    for (const field of record.record.fields) {
+      if (!field.type) {
+        continue;
+      }
+      let propertyName = toFieldPropertyName(field, name);
+      // Also avoid clashing with the enclosing type name itself (CS0542).
+      while (usedFieldNames.has(propertyName) || propertyName === name) {
+        propertyName = `${propertyName}_`;
+      }
+      usedFieldNames.add(propertyName);
+
+      const fieldType = this.typeSpeller.getCsharpType(field.type);
+      const defaultExpr = this.typeSpeller.getDefaultExpr(
+        field.type,
+        field.isRecursive,
+      );
+
+      if (field.isRecursive === "hard") {
+        // Not required: circular static initialization would cause infinite
+        // recursion if we tried to set this field in DEFAULT's initializer.
+        const backingName = `_${propertyName}_rec`;
+        this.lines.push(
+          `${bodyIndent}private ${fieldType}? ${backingName} = null;`,
+        );
+        this.lines.push(`${bodyIndent}public ${fieldType} ${propertyName}`);
+        this.lines.push(`${bodyIndent}{`);
+        this.lines.push(
+          `${bodyIndent}    get => ${backingName} ?? ${fieldType}.DEFAULT;`,
+        );
+        this.lines.push(`${bodyIndent}    init => ${backingName} = value;`);
+        this.lines.push(`${bodyIndent}}`);
+      } else {
+        this.lines.push(
+          `${bodyIndent}public required ${fieldType} ${propertyName} { get; init; } = ${defaultExpr};`,
+        );
+        requiredInits.push(`${propertyName} = ${defaultExpr}`);
+      }
+    }
+
+    if (record.record.fields.length > 0) {
+      this.lines.push("");
+    }
+
+    this.lines.push(`${bodyIndent}#pragma warning disable CS0414`);
+    this.lines.push(
+      `${bodyIndent}private global::SkirClient.UnrecognizedFields<${name}>? _unrecognized = null;`,
+    );
+    this.lines.push(`${bodyIndent}#pragma warning restore CS0414`);
+    const defaultInit =
+      requiredInits.length > 0
+        ? `new() { ${requiredInits.join(", ")} }`
+        : "new()";
+    this.lines.push(
+      `${bodyIndent}public static ${name} DEFAULT { get; } = ${defaultInit};`,
+    );
+
+    if (hardRecursiveFields.length > 0) {
+      this.lines.push("");
+      this.lines.push(
+        `${bodyIndent}internal global::SkirClient.UnrecognizedFields<${name}>? _GetUnrecognized() => _unrecognized;`,
+      );
+    }
+
+    this.lines.push(`${indent}}`);
+  }
+
+  private writeEnum(
+    record: RecordLocation,
+    name: string,
+    indentLevel: number,
+  ): void {
+    const indent = "    ".repeat(indentLevel);
+    const bodyIndent = "    ".repeat(indentLevel + 1);
+    const body2Indent = "    ".repeat(indentLevel + 2);
+    const variants = record.record.fields;
+
+    // Nested Skir records are emitted as top-level C# types, so enum bodies
+    // only contain variants. Still include enum name to avoid CS0542.
+    const nestedTypeNames = new Set<string>();
+    nestedTypeNames.add(name);
+    const addSuffix = doVariantNamesNeedSuffix(variants, nestedTypeNames);
+
+    // When a nested type shadows the outer enum name in C# (e.g. enum Kind has
+    // nested enum Kind_), we need fully-qualified base class reference so that
+    // variant records like 'Kind' can correctly inherit from the outer 'Kind'.
+    // Using global:: prefix always avoids any ambiguity.
+    const fqBase = this.getFullyQualifiedTypeName(record);
+
+    this.lines.push(`${indent}public abstract record ${name}`);
+    this.lines.push(`${indent}{`);
+
+    // UNKNOWN variant: use explicit body (not positional) to avoid CS8910
+    // (primary constructor conflicts with synthesized copy constructor).
+    this.lines.push(`${bodyIndent}public sealed record UNKNOWN : ${fqBase}`);
+    this.lines.push(`${bodyIndent}{`);
+    this.lines.push(
+      `${body2Indent}public global::SkirClient.UnrecognizedVariant<${fqBase}>? Value { get; init; } = null;`,
+    );
+    this.lines.push(`${bodyIndent}}`);
+    this.lines.push(
+      `${bodyIndent}public static ${name} DEFAULT { get; } = new UNKNOWN();`,
+    );
+
+    if (variants.length > 0) {
+      this.lines.push("");
+    }
+
+    for (const variant of variants) {
+      const variantTypeName = toVariantTypeName(variant, addSuffix);
+      if (variant.type) {
+        const payloadType = this.typeSpeller.getCsharpType(variant.type);
+        const defaultExpr = this.typeSpeller.getDefaultExpr(variant.type);
+        // Use explicit body (not positional constructor) to avoid CS8910.
+        this.lines.push(
+          `${bodyIndent}public sealed record ${variantTypeName} : ${fqBase}`,
+        );
+        this.lines.push(`${bodyIndent}{`);
+        this.lines.push(
+          `${body2Indent}public ${payloadType} Value { get; init; } = ${defaultExpr};`,
+        );
+        this.lines.push(`${bodyIndent}}`);
+      } else {
+        this.lines.push(
+          `${bodyIndent}public sealed record ${variantTypeName} : ${fqBase};`,
+        );
+      }
+    }
+
+    this.lines.push(`${indent}}`);
+  }
+
+  /** Returns the fully-qualified C# type name for a record, e.g.
+   * global::Skirout.Enums.Weekday or global::Skirout.Enums.Kind */
+  private getFullyQualifiedTypeName(record: RecordLocation): string {
+    const ns = modulePathToNamespace(record.modulePath);
+    const typePath = getTypeName(record);
+    return `global::${ns}.${typePath}`;
   }
 }
 
