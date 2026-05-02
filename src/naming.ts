@@ -170,3 +170,24 @@ export function toVariantTypeName(
   }
   return name;
 }
+
+/**
+ * Converts a skir module path to the corresponding C# output file path,
+ * with each path segment (directories and file stem) in PascalCase.
+ * Examples:
+ *   "full_name.skir"     -> "FullName.cs"
+ *   "vehicles/car.skir" -> "Vehicles/Car.cs"
+ *   "@foo/bar/baz.skir" -> "@foo/Bar/Baz.cs"
+ */
+export function modulePathToCsharpPath(modulePath: string): string {
+  // Preserve a leading @scope/ prefix verbatim (external packages).
+  const atMatch = modulePath.match(/^(@[^/]+\/)(.*)$/);
+  const prefix = atMatch?.[1] ?? "";
+  const rest = atMatch?.[2] ?? modulePath;
+
+  const parts = rest.replace(/\.skir$/, "").split("/");
+  const pascal = parts
+    .map((p) => toTypeSegment(p.replace(/-/g, "_")))
+    .join("/");
+  return `${prefix}${pascal}.cs`;
+}

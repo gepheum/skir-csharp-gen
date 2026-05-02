@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 import {
   getTypeName,
+  modulePathToCsharpPath,
   modulePathToNamespace,
   toFieldPropertyName,
   toVariantTypeName,
@@ -26,7 +27,7 @@ class CsharpCodeGenerator implements CodeGenerator<Config> {
     const outputFiles: CodeGenerator.OutputFile[] = [];
     for (const module of input.modules) {
       outputFiles.push({
-        path: module.path.replace(/\.skir$/, ".cs"),
+        path: modulePathToCsharpPath(module.path),
         code: new CsharpSourceFileGenerator(
           module,
           modulePathToNamespace(module.path),
