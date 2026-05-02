@@ -109,7 +109,7 @@ class CsharpSourceFileGenerator {
     const indent = "    ".repeat(indentLevel);
     const bodyIndent = "    ".repeat(indentLevel + 1);
 
-    this.lines.push(`${indent}public sealed record ${name}`);
+    this.lines.push(`${indent}public readonly record struct ${name}`);
     this.lines.push(`${indent}{`);
 
     // Nested Skir records are emitted as top-level C# types, so there are no
@@ -144,11 +144,11 @@ class CsharpSourceFileGenerator {
       this.lines.push("");
     }
 
-    this.lines.push(`${bodyIndent}#pragma warning disable CS0414`);
+    this.lines.push(`${bodyIndent}#pragma warning disable CS0169`);
     this.lines.push(
-      `${bodyIndent}private global::SkirClient.UnrecognizedFields<${name}>? _unrecognized = null;`,
+      `${bodyIndent}private readonly global::SkirClient.UnrecognizedFields<${name}>? _unrecognized;`,
     );
-    this.lines.push(`${bodyIndent}#pragma warning restore CS0414`);
+    this.lines.push(`${bodyIndent}#pragma warning restore CS0169`);
     const defaultInit =
       requiredInits.length > 0
         ? `new() { ${requiredInits.join(", ")} }`
