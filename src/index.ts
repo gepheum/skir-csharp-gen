@@ -325,11 +325,12 @@ class CsharpSourceFileGenerator {
       .join(".");
     const modulePath = record.modulePath;
 
-    // Reserved names within the enum body: UNKNOWN is always synthesized, and
-    // the enum name itself must not be reused (CS0542-equivalent for records).
+    // Reserved names within the enum body: Unknown_Type and Unknown are always
+    // synthesized, and the enum name itself must not be reused (CS0542-equivalent
+    // for records).
     const reservedVariantNames = new Set<string>([
-      "UNKNOWN",
-      "DEFAULT",
+      "Unknown_Type",
+      "Unknown",
       "Serializer",
       "InitAdapter_",
       "_adapter",
@@ -346,27 +347,19 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${indent}public abstract record ${name}`);
     this.lines.push(`${indent}{`);
 
-    // UNKNOWN variant: use explicit body (not positional) to avoid CS8910
+    // Unknown_Type variant: use explicit body (not positional) to avoid CS8910
     // (primary constructor conflicts with synthesized copy constructor).
-    this.lines.push(`${bodyIndent}public sealed record UNKNOWN : ${fqBase}`);
+    this.lines.push(
+      `${bodyIndent}public sealed record Unknown_Type : ${fqBase}`,
+    );
     this.lines.push(`${bodyIndent}{`);
     this.lines.push(
       `${body2Indent}public global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? Value { get; init; } = null;`,
     );
     this.lines.push(`${bodyIndent}}`);
-    if (variantInfos.length > 0) {
-      const firstVariant = variantInfos[0]!;
-      const defaultExpr = firstVariant.variant.type
-        ? `new ${firstVariant.typeName} { Value = ${this.typeSpeller.getDefaultExpr(firstVariant.variant.type)} }`
-        : `new ${firstVariant.typeName}()`;
-      this.lines.push(
-        `${bodyIndent}public static ${name} DEFAULT { get; } = ${defaultExpr};`,
-      );
-    } else {
-      this.lines.push(
-        `${bodyIndent}public static ${name} DEFAULT { get; } = new UNKNOWN();`,
-      );
-    }
+    this.lines.push(
+      `${bodyIndent}public static readonly Unknown_Type Unknown = new Unknown_Type();`,
+    );
 
     if (variantInfos.length > 0) {
       this.lines.push("");
@@ -386,7 +379,10 @@ class CsharpSourceFileGenerator {
         this.lines.push(`${bodyIndent}}`);
       } else {
         this.lines.push(
-          `${bodyIndent}public sealed record ${typeName} : ${fqBase};`,
+          `${bodyIndent}public sealed record ${typeName}_Type : ${fqBase};`,
+        );
+        this.lines.push(
+          `${bodyIndent}public static readonly ${typeName}_Type ${typeName} = new ${typeName}_Type();`,
         );
       }
     }
@@ -400,17 +396,22 @@ class CsharpSourceFileGenerator {
     );
     this.lines.push(`${bodyIndent}    new(`);
     this.lines.push(`${body2Indent}x => x switch {`);
-    this.lines.push(`${body3Indent}${fqBase}.UNKNOWN _ => 0,`);
-    variantInfos.forEach(({ typeName }, i) => {
-      this.lines.push(`${body3Indent}${fqBase}.${typeName} _ => ${i + 1},`);
+    this.lines.push(`${body3Indent}${fqBase}.Unknown_Type _ => 0,`);
+    variantInfos.forEach(({ variant, typeName }, i) => {
+      const switchTypeName = variant.type ? typeName : `${typeName}_Type`;
+      this.lines.push(
+        `${body3Indent}${fqBase}.${switchTypeName} _ => ${i + 1},`,
+      );
     });
     this.lines.push(`${body3Indent}_ => 0`);
     this.lines.push(`${body2Indent}},`);
-    this.lines.push(`${body2Indent}u => new ${fqBase}.UNKNOWN { Value = u },`);
     this.lines.push(
-      `${body2Indent}x => x is ${fqBase}.UNKNOWN _u ? _u.Value : null,`,
+      `${body2Indent}u => new ${fqBase}.Unknown_Type { Value = u },`,
     );
-    this.lines.push(`${body2Indent}${name}.DEFAULT,`);
+    this.lines.push(
+      `${body2Indent}x => x is ${fqBase}.Unknown_Type _u ? _u.Value : null,`,
+    );
+    this.lines.push(`${body2Indent}${fqBase}.Unknown,`);
     this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
     this.lines.push(`${body2Indent}${JSON.stringify(qualifiedName)},`);
     this.lines.push(`${body2Indent}${JSON.stringify(enumDoc)});`);
@@ -455,7 +456,7 @@ class CsharpSourceFileGenerator {
         );
       } else {
         this.lines.push(
-          `${body2Indent}_adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, new ${fqBase}.${typeName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
+          `${body2Indent}_adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, new ${fqBase}.${typeName}_Type(), ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       }
     });

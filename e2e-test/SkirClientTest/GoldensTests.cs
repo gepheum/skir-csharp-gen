@@ -146,7 +146,7 @@ public sealed class GoldensTests
     {
         var json = EvaluateString(a.Actual);
         var value = EnumA.Serializer.FromJson(json, a.KeepUnrecognized);
-        if (value is not EnumA.A)
+        if (value is not EnumA.A_Type)
         {
             throw new GoldenAssertionException(
                 $"enum_a_from_json_is_constant mismatch\n  actual json: \"{json}\"\n  expected: EnumA.A");
@@ -157,7 +157,7 @@ public sealed class GoldensTests
     {
         var bytes = EvaluateBytes(a.Actual);
         var value = EnumA.Serializer.FromBytes(bytes, a.KeepUnrecognized);
-        if (value is not EnumA.A)
+        if (value is not EnumA.A_Type)
         {
             throw new GoldenAssertionException(
                 $"enum_a_from_bytes_is_constant mismatch\n  actual bytes: hex:{ToHex(bytes)}\n  expected: EnumA.A");

@@ -459,8 +459,9 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
         if (ko < _kindOrdinalToEntry.Count && _kindOrdinalToEntry[ko] is IVariantEntry entry)
         {
             if (entry.Constant is T c) return c;
-            // Wrapper in constant context: return default
-            return _default;
+            // Wrapper in constant context (no payload bytes available): produce wrapper with default payload.
+            var zeroJson = JsonDocument.Parse("0").RootElement;
+            try { return entry.WrapFromJson(zeroJson, false); } catch { return _default; }
         }
         return _default;
     }

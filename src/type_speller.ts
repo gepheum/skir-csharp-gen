@@ -106,7 +106,7 @@ export class TypeSpeller {
         const recordLocation = this.recordMap.get(type.key)!;
         return recordLocation.record.recordType === "struct"
           ? `${csharpType}.Default`
-          : `${csharpType}.DEFAULT`;
+          : `${csharpType}.Unknown`;
       }
       case "array": {
         const itemType = this.getCsharpType(type.item);
