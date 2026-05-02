@@ -1,5 +1,6 @@
 import {
   type CodeGenerator,
+  type Field,
   type Module,
   type RecordKey,
   type RecordLocation,
@@ -77,6 +78,28 @@ class CsharpSourceFileGenerator {
       this.writeRecord(record, 0);
     }
 
+    // Emit the per-module lazy initializer that wires all adapters.
+    this.lines.push(`// ${"=".repeat(76)}`);
+    this.lines.push("// Module initialization");
+    this.lines.push(`// ${"=".repeat(76)}`);
+    this.lines.push("");
+    this.lines.push("internal static class ModuleInit_");
+    this.lines.push("{");
+    this.lines.push(
+      "    private static readonly global::System.Lazy<bool> _lazy = new(() =>",
+    );
+    this.lines.push("    {");
+    for (const record of moduleRecords) {
+      const fqn = this.getFullyQualifiedTypeName(record);
+      this.lines.push(`        ${fqn}.InitAdapter_();`);
+    }
+    this.lines.push("        return true;");
+    this.lines.push("    });");
+    this.lines.push(
+      "    internal static void EnsureInit() => _ = _lazy.Value;",
+    );
+    this.lines.push("}");
+
     return this.lines.join("\n");
   }
 
@@ -107,29 +130,24 @@ class CsharpSourceFileGenerator {
   ): void {
     const indent = "    ".repeat(indentLevel);
     const bodyIndent = "    ".repeat(indentLevel + 1);
+    const body2Indent = "    ".repeat(indentLevel + 2);
+
+    const fqName = this.getFullyQualifiedTypeName(record);
+    const qualifiedName = record.recordAncestors
+      .map((r) => r.name.text)
+      .join(".");
+    const modulePath = record.modulePath;
 
     this.lines.push(`${indent}public readonly record struct ${name}`);
     this.lines.push(`${indent}{`);
 
-    // Nested Skir records are emitted as top-level C# types, so there are no
-    // nested type declarations inside a struct body.
-    const nestedTypeNamesInStruct = new Set<string>();
+    // Pre-compute property names to reuse in both field declarations and InitAdapter_.
+    const fieldInfos = this.computeFieldInfos(record, name);
 
     // Collect field initializers for the DEFAULT static property.
     const requiredInits: string[] = [];
 
-    const usedFieldNames = new Set<string>(nestedTypeNamesInStruct);
-    for (const field of record.record.fields) {
-      if (!field.type) {
-        continue;
-      }
-      let propertyName = toFieldPropertyName(field, name);
-      // Also avoid clashing with the enclosing type name itself (CS0542).
-      while (usedFieldNames.has(propertyName) || propertyName === name) {
-        propertyName = `${propertyName}_`;
-      }
-      usedFieldNames.add(propertyName);
-
+    for (const { field, propertyName } of fieldInfos) {
       const fieldType = this.typeSpeller.getCsharpFieldType(field);
       const defaultExpr = this.typeSpeller.getFieldDefaultExpr(field);
 
@@ -139,7 +157,7 @@ class CsharpSourceFileGenerator {
       requiredInits.push(`${propertyName} = ${defaultExpr}`);
     }
 
-    if (record.record.fields.length > 0) {
+    if (fieldInfos.length > 0) {
       this.lines.push("");
     }
 
@@ -148,6 +166,7 @@ class CsharpSourceFileGenerator {
       `${bodyIndent}private readonly global::SkirClient.UnrecognizedFields<${name}>? _unrecognized;`,
     );
     this.lines.push(`${bodyIndent}#pragma warning restore CS0169`);
+
     const defaultInit =
       requiredInits.length > 0
         ? `new() { ${requiredInits.join(", ")} }`
@@ -155,7 +174,53 @@ class CsharpSourceFileGenerator {
     this.lines.push(
       `${bodyIndent}public static readonly ${name} DEFAULT = ${defaultInit};`,
     );
+    this.lines.push("");
 
+    // Adapter field.
+    this.lines.push(
+      `${bodyIndent}internal static readonly global::SkirClient.StructAdapter<${fqName}> _adapter =`,
+    );
+    this.lines.push(
+      `${bodyIndent}    new(${name}.DEFAULT, ${JSON.stringify(modulePath)}, ${JSON.stringify(qualifiedName)});`,
+    );
+    this.lines.push("");
+
+    // Serializer property.
+    this.lines.push(
+      `${bodyIndent}public static global::SkirClient.Serializer<${fqName}> Serializer`,
+    );
+    this.lines.push(
+      `${bodyIndent}{ get { ModuleInit_.EnsureInit(); return _adapter; } }`,
+    );
+    this.lines.push("");
+
+    // InitAdapter_ method.
+    this.lines.push(`${bodyIndent}internal static void InitAdapter_()`);
+    this.lines.push(`${bodyIndent}{`);
+
+    for (const removedNumber of record.record.removedNumbers) {
+      this.lines.push(
+        `${body2Indent}_adapter.AddRemovedNumber(${removedNumber});`,
+      );
+    }
+
+    for (const { field, propertyName } of fieldInfos) {
+      const serExpr = this.typeSpeller.getSerializerExpr(
+        field.type!,
+        true,
+        field.isRecursive,
+      );
+      const getter = this.makeStructFieldGetter(field, propertyName);
+      const setter = this.makeStructFieldSetter(field, propertyName);
+      this.lines.push(
+        `${body2Indent}_adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr},`,
+      );
+      this.lines.push(`${body2Indent}    ${getter},`);
+      this.lines.push(`${body2Indent}    ${setter});`);
+    }
+
+    this.lines.push(`${body2Indent}_adapter.Finalize_();`);
+    this.lines.push(`${bodyIndent}}`);
     this.lines.push(`${indent}}`);
   }
 
@@ -167,15 +232,31 @@ class CsharpSourceFileGenerator {
     const indent = "    ".repeat(indentLevel);
     const bodyIndent = "    ".repeat(indentLevel + 1);
     const body2Indent = "    ".repeat(indentLevel + 2);
+    const body3Indent = "    ".repeat(indentLevel + 3);
     const variants = record.record.fields;
+
+    const fqBase = this.getFullyQualifiedTypeName(record);
+    const qualifiedName = record.recordAncestors
+      .map((r) => r.name.text)
+      .join(".");
+    const modulePath = record.modulePath;
 
     // Reserved names within the enum body: UNKNOWN is always synthesized, and
     // the enum name itself must not be reused (CS0542-equivalent for records).
-    const reservedVariantNames = new Set<string>(["UNKNOWN", name]);
+    const reservedVariantNames = new Set<string>([
+      "UNKNOWN",
+      "DEFAULT",
+      "Serializer",
+      "InitAdapter_",
+      "_adapter",
+      name,
+    ]);
 
-    // Using global:: prefix always avoids ambiguity when a variant name
-    // matches the enum name.
-    const fqBase = this.getFullyQualifiedTypeName(record);
+    // Pre-compute variant type names to reuse in declarations and InitAdapter_.
+    const variantInfos = variants.map((v) => ({
+      variant: v,
+      typeName: toVariantTypeName(v, reservedVariantNames),
+    }));
 
     this.lines.push(`${indent}public abstract record ${name}`);
     this.lines.push(`${indent}{`);
@@ -192,18 +273,17 @@ class CsharpSourceFileGenerator {
       `${bodyIndent}public static ${name} DEFAULT { get; } = new UNKNOWN();`,
     );
 
-    if (variants.length > 0) {
+    if (variantInfos.length > 0) {
       this.lines.push("");
     }
 
-    for (const variant of variants) {
-      const variantTypeName = toVariantTypeName(variant, reservedVariantNames);
+    for (const { variant, typeName } of variantInfos) {
       if (variant.type) {
         const payloadType = this.typeSpeller.getCsharpType(variant.type);
         const defaultExpr = this.typeSpeller.getDefaultExpr(variant.type);
         // Use explicit body (not positional constructor) to avoid CS8910.
         this.lines.push(
-          `${bodyIndent}public sealed record ${variantTypeName} : ${fqBase}`,
+          `${bodyIndent}public sealed record ${typeName} : ${fqBase}`,
         );
         this.lines.push(`${bodyIndent}{`);
         this.lines.push(
@@ -212,12 +292,153 @@ class CsharpSourceFileGenerator {
         this.lines.push(`${bodyIndent}}`);
       } else {
         this.lines.push(
-          `${bodyIndent}public sealed record ${variantTypeName} : ${fqBase};`,
+          `${bodyIndent}public sealed record ${typeName} : ${fqBase};`,
         );
       }
     }
 
+    this.lines.push("");
+
+    // Adapter field.
+    this.lines.push(
+      `${bodyIndent}internal static readonly global::SkirClient.EnumAdapter<${fqBase}> _adapter =`,
+    );
+    this.lines.push(`${bodyIndent}    new(`);
+    this.lines.push(`${body2Indent}x => x switch {`);
+    this.lines.push(`${body3Indent}${fqBase}.UNKNOWN _ => 0,`);
+    variantInfos.forEach(({ typeName }, i) => {
+      this.lines.push(`${body3Indent}${fqBase}.${typeName} _ => ${i + 1},`);
+    });
+    this.lines.push(`${body3Indent}_ => 0`);
+    this.lines.push(`${body2Indent}},`);
+    this.lines.push(`${body2Indent}u => new ${fqBase}.UNKNOWN { Value = u },`);
+    this.lines.push(
+      `${body2Indent}x => x is ${fqBase}.UNKNOWN _u ? _u.Value : null,`,
+    );
+    this.lines.push(`${body2Indent}${name}.DEFAULT,`);
+    this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
+    this.lines.push(`${body2Indent}${JSON.stringify(qualifiedName)});`);
+    this.lines.push("");
+
+    // Serializer property.
+    this.lines.push(
+      `${bodyIndent}public static global::SkirClient.Serializer<${fqBase}> Serializer`,
+    );
+    this.lines.push(
+      `${bodyIndent}{ get { ModuleInit_.EnsureInit(); return _adapter; } }`,
+    );
+    this.lines.push("");
+
+    // InitAdapter_ method.
+    this.lines.push(`${bodyIndent}internal static void InitAdapter_()`);
+    this.lines.push(`${bodyIndent}{`);
+
+    for (const removedNumber of record.record.removedNumbers) {
+      this.lines.push(
+        `${body2Indent}_adapter.AddRemovedNumber(${removedNumber});`,
+      );
+    }
+
+    variantInfos.forEach(({ variant, typeName }, i) => {
+      const kindOrdinal = i + 1;
+      if (variant.type) {
+        const payloadCsharpType = this.typeSpeller.getCsharpType(variant.type);
+        const serExpr = this.typeSpeller.getSerializerExpr(variant.type, true);
+        this.lines.push(
+          `${body2Indent}_adapter.AddWrapperVariant<${payloadCsharpType}>(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal},`,
+        );
+        this.lines.push(`${body3Indent}${serExpr},`);
+        this.lines.push(
+          `${body3Indent}v => new ${fqBase}.${typeName} { Value = v },`,
+        );
+        this.lines.push(
+          `${body3Indent}x => ((${fqBase}.${typeName})x).Value);`,
+        );
+      } else {
+        this.lines.push(
+          `${body2Indent}_adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, new ${fqBase}.${typeName}());`,
+        );
+      }
+    });
+
+    this.lines.push(`${body2Indent}_adapter.Finalize_();`);
+    this.lines.push(`${bodyIndent}}`);
     this.lines.push(`${indent}}`);
+  }
+
+  /**
+   * Pre-computes (field, propertyName) pairs for a struct, applying the same
+   * collision-avoidance logic in both the field declaration and InitAdapter_.
+   */
+  private computeFieldInfos(
+    record: RecordLocation,
+    typeName: string,
+  ): Array<{ field: Field; propertyName: string }> {
+    const result: Array<{ field: Field; propertyName: string }> = [];
+    const usedNames = new Set<string>([
+      "DEFAULT",
+      "Serializer",
+      "InitAdapter_",
+      "_adapter",
+      "_unrecognized",
+    ]);
+    for (const field of record.record.fields) {
+      if (!field.type) continue;
+      let propertyName = toFieldPropertyName(field, typeName);
+      while (usedNames.has(propertyName) || propertyName === typeName) {
+        propertyName = `${propertyName}_`;
+      }
+      usedNames.add(propertyName);
+      result.push({ field, propertyName });
+    }
+    return result;
+  }
+
+  /** Returns a lambda expression `x => …` that retrieves the field value in
+   *  the type expected by the serializer (unwrapping Recursive<T> if needed). */
+  private makeStructFieldGetter(field: Field, propertyName: string): string {
+    if (field.isRecursive === "hard") {
+      const innerType = this.typeSpeller.getCsharpType(field.type!);
+      return (
+        `x => x.${propertyName}.HasValue ` +
+        `? x.${propertyName}.Value : ${innerType}.DEFAULT`
+      );
+    }
+    if (field.isRecursive === "via-optional") {
+      if (field.type!.kind !== "optional") {
+        throw new Error("via-optional field must have optional type");
+      }
+      const innerType = this.typeSpeller.getCsharpType(field.type!.other);
+      return (
+        `x => x.${propertyName}.HasValue ` +
+        `? (${innerType}?)x.${propertyName}.Value.Value : null`
+      );
+    }
+    return `x => x.${propertyName}`;
+  }
+
+  /** Returns a lambda expression `(x, v) => …` that sets the field value,
+   *  wrapping in Recursive<T> if needed. */
+  private makeStructFieldSetter(field: Field, propertyName: string): string {
+    if (field.isRecursive === "hard") {
+      const innerType = this.typeSpeller.getCsharpType(field.type!);
+      return (
+        `(x, v) => x with { ${propertyName} = ` +
+        `global::SkirClient.Recursive<${innerType}>.FromValue(v) }`
+      );
+    }
+    if (field.isRecursive === "via-optional") {
+      if (field.type!.kind !== "optional") {
+        throw new Error("via-optional field must have optional type");
+      }
+      const innerType = this.typeSpeller.getCsharpType(field.type!.other);
+      return (
+        `(x, v) => x with { ${propertyName} = v == null ` +
+        `? (global::SkirClient.Recursive<${innerType}>?)null ` +
+        `: global::SkirClient.Recursive<${innerType}>.FromValue(v.GetValueOrDefault()) }`
+      );
+    }
+    return `(x, v) => x with { ${propertyName} = v }`;
   }
 
   /** Returns the fully-qualified C# type name for a record, e.g.

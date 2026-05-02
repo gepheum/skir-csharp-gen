@@ -54,6 +54,28 @@ public abstract class Serializer<T>
     /// </summary>
     public abstract T FromBytes(byte[] bytes, bool keepUnrecognizedValues = false);
 
+    // Internal fast-path hooks used by generated adapters.
+    internal virtual bool IsDefaultInternal(T value)
+        => EqualityComparer<T>.Default.Equals(value, default!);
+
+    internal virtual void ToJsonInternal(T value, string? eolIndent, StringBuilder output)
+        => output.Append(ToJson(value, eolIndent != null));
+
+    internal virtual T FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        => FromJson(json.GetRawText(), keepUnrecognizedValues);
+
+    internal virtual void EncodeInternal(T value, List<byte> output)
+        => output.AddRange(ToBytes(value));
+
+    internal virtual T DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
+    {
+        int remaining = data.Length - offset;
+        byte[] slice = new byte[remaining];
+        Buffer.BlockCopy(data, offset, slice, 0, remaining);
+        offset = data.Length;
+        return FromBytes(slice, keepUnrecognizedValues);
+    }
+
     /// <summary>Reflection descriptor for this type's schema.</summary>
     public abstract TypeDescriptor TypeDescriptor { get; }
 }
@@ -149,6 +171,20 @@ internal sealed class TypeAdapterSerializer<T> : Serializer<T>
         return FromJson(Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
     }
 
+    internal override bool IsDefaultInternal(T value) => _adapter.IsDefault(value);
+
+    internal override void ToJsonInternal(T value, string? eolIndent, StringBuilder output)
+        => _adapter.ToJson(value, eolIndent, output);
+
+    internal override T FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        => _adapter.FromJson(json, keepUnrecognizedValues);
+
+    internal override void EncodeInternal(T value, List<byte> output)
+        => _adapter.Encode(value, output);
+
+    internal override T DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        => _adapter.Decode(data, ref offset, keepUnrecognizedValues);
+
     public override TypeDescriptor TypeDescriptor => _adapter.TypeDescriptor;
 }
 
@@ -231,6 +267,7 @@ public static class Serializers
             if (!BitConverter.IsLittleEndian) System.Array.Reverse(bytes);
             return bytes;
         }
+        internal static byte[] LE_(byte[] bytes) => LE(bytes);
 
         // Encodes an i32 using the skir variable-length wire format.
         //   0..=231         → single byte
@@ -272,6 +309,9 @@ public static class Serializers
             default: return 0;
         }
     }
+    internal static void EncodeI32_(int v, List<byte> output) => EncodeI32(v, output);
+    internal static long DecodeNumberBody_(byte wire, byte[] data, ref int offset) =>
+        DecodeNumberBody(wire, data, ref offset);
 
     internal static long DecodeNumber(byte[] data, ref int offset)
     {
@@ -284,6 +324,7 @@ public static class Serializers
         if (offset >= data.Length) throw new InvalidOperationException("Unexpected end of input");
         return data[offset++];
     }
+    internal static byte ReadU8_(byte[] data, ref int offset) => ReadU8(data, ref offset);
 
     private static ushort ReadU16(byte[] data, ref int offset)
     {
@@ -292,6 +333,7 @@ public static class Serializers
         offset += 2;
         return v;
     }
+    internal static ushort ReadU16_(byte[] data, ref int offset) => ReadU16(data, ref offset);
 
     private static uint ReadU32(byte[] data, ref int offset)
     {
@@ -349,6 +391,7 @@ public static class Serializers
         else if (n <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)n))); }
         else { output.Add(233); output.AddRange(LE(BitConverter.GetBytes(n))); }
     }
+    internal static void EncodeUint32_(uint n, List<byte> output) => EncodeUint32(n, output);
 
     // Writes s as a JSON string literal (with surrounding quotes) using Skir escaping rules.
     private static void WriteJsonString(string s, StringBuilder output)
@@ -374,6 +417,61 @@ public static class Serializers
             }
         }
         output.Append('"');
+    }
+    internal static void WriteJsonString_(string s, StringBuilder output) => WriteJsonString(s, output);
+
+    // Skips one encoded value at the current offset (used for removed/unknown slots).
+    internal static void SkipValue_(byte[] data, ref int offset)
+    {
+        if (offset >= data.Length) return;
+        byte wire = data[offset++];
+        if (wire <= 231) return;
+
+        switch (wire)
+        {
+            case 232: offset += 2; break;
+            case 233: offset += 4; break;
+            case 234:
+            case 238:
+            case 239: offset += 8; break;
+            case 235: offset += 1; break;
+            case 236: offset += 2; break;
+            case 237: offset += 4; break;
+            case 242:
+            case 244: break;
+            case 243:
+            case 245:
+            {
+                long n = DecodeNumber(data, ref offset);
+                offset += (int)n;
+                break;
+            }
+            case 246: break;
+            case 247:
+                SkipValue_(data, ref offset);
+                break;
+            case 248:
+                SkipValue_(data, ref offset);
+                SkipValue_(data, ref offset);
+                break;
+            case 249:
+                SkipValue_(data, ref offset);
+                SkipValue_(data, ref offset);
+                SkipValue_(data, ref offset);
+                break;
+            case 250:
+            {
+                long n = DecodeNumber(data, ref offset);
+                for (long i = 0; i < n; i++) SkipValue_(data, ref offset);
+                break;
+            }
+            case 251:
+            case 252:
+            case 253:
+            case 254:
+                SkipValue_(data, ref offset);
+                break;
+        }
     }
 
     // Encodes bytes as a lowercase hexadecimal string.
@@ -725,35 +823,209 @@ public static class Serializers
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.String);
     }
 
-    // ---- Composite stubs ----
+    // ---- Composite serializers ----
 
     private sealed class OptionalRefSerializer_<T>(Serializer<T> inner) : Serializer<T?> where T : class
     {
+        internal override bool IsDefaultInternal(T? v) => v is null;
+
+        internal override void ToJsonInternal(T? v, string? eolIndent, StringBuilder sb)
+        {
+            if (v is null) sb.Append("null");
+            else inner.ToJsonInternal(v, eolIndent, sb);
+        }
+
+        internal override T? FromJsonInternal(JsonElement json, bool keep)
+        {
+            if (json.ValueKind == JsonValueKind.Null) return null;
+            var result = inner.FromJsonInternal(json, keep);
+            return inner.IsDefaultInternal(result) ? null : result;
+        }
+
+        internal override void EncodeInternal(T? v, List<byte> output)
+        {
+            if (v is null) output.Add(0);
+            else inner.EncodeInternal(v, output);
+        }
+
+        internal override T? DecodeInternal(byte[] data, ref int offset, bool keep)
+        {
+            var result = inner.DecodeInternal(data, ref offset, keep);
+            return inner.IsDefaultInternal(result) ? null : result;
+        }
+
         public override string ToJson(T? value, bool readable = false)
-            => value is null ? "null" : inner.ToJson(value, readable);
-        public override byte[] ToBytes(T? value) => [];
-        public override T? FromJson(string json, bool keepUnrecognizedValues = false) => json == "null" ? null : inner.FromJson(json, keepUnrecognizedValues);
-        public override T? FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => null;
+        {
+            var sb = new StringBuilder();
+            ToJsonInternal(value, readable ? "\n" : null, sb);
+            return sb.ToString();
+        }
+
+        public override byte[] ToBytes(T? value)
+        {
+            var buf = new List<byte> { (byte)'s', (byte)'k', (byte)'i', (byte)'r' };
+            EncodeInternal(value, buf);
+            return [.. buf];
+        }
+
+        public override T? FromJson(string json, bool keepUnrecognizedValues = false)
+        {
+            using var doc = JsonDocument.Parse(json);
+            return FromJsonInternal(doc.RootElement, keepUnrecognizedValues);
+        }
+
+        public override T? FromBytes(byte[] bytes, bool keepUnrecognizedValues = false)
+        {
+            if (bytes.Length >= 4 && bytes[0] == 's' && bytes[1] == 'k' && bytes[2] == 'i' && bytes[3] == 'r')
+            {
+                int o = 4;
+                return DecodeInternal(bytes, ref o, keepUnrecognizedValues);
+            }
+            return FromJson(Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
+        }
+
         public override TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
     }
 
     private sealed class OptionalValueSerializer_<T>(Serializer<T> inner) : Serializer<T?> where T : struct
     {
+        internal override bool IsDefaultInternal(T? v) => v is null;
+
+        internal override void ToJsonInternal(T? v, string? eolIndent, StringBuilder sb)
+        {
+            if (v is null) sb.Append("null");
+            else inner.ToJsonInternal(v.Value, eolIndent, sb);
+        }
+
+        internal override T? FromJsonInternal(JsonElement json, bool keep)
+        {
+            if (json.ValueKind == JsonValueKind.Null) return null;
+            var result = inner.FromJsonInternal(json, keep);
+            return inner.IsDefaultInternal(result) ? null : (T?)result;
+        }
+
+        internal override void EncodeInternal(T? v, List<byte> output)
+        {
+            if (v is null) output.Add(0);
+            else inner.EncodeInternal(v.Value, output);
+        }
+
+        internal override T? DecodeInternal(byte[] data, ref int offset, bool keep)
+        {
+            var result = inner.DecodeInternal(data, ref offset, keep);
+            return inner.IsDefaultInternal(result) ? null : (T?)result;
+        }
+
         public override string ToJson(T? value, bool readable = false)
-            => value is null ? "null" : inner.ToJson(value.Value, readable);
-        public override byte[] ToBytes(T? value) => [];
-        public override T? FromJson(string json, bool keepUnrecognizedValues = false) => json == "null" ? null : inner.FromJson(json, keepUnrecognizedValues);
-        public override T? FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => null;
+        {
+            var sb = new StringBuilder();
+            ToJsonInternal(value, readable ? "\n" : null, sb);
+            return sb.ToString();
+        }
+
+        public override byte[] ToBytes(T? value)
+        {
+            var buf = new List<byte> { (byte)'s', (byte)'k', (byte)'i', (byte)'r' };
+            EncodeInternal(value, buf);
+            return [.. buf];
+        }
+
+        public override T? FromJson(string json, bool keepUnrecognizedValues = false)
+        {
+            using var doc = JsonDocument.Parse(json);
+            return FromJsonInternal(doc.RootElement, keepUnrecognizedValues);
+        }
+
+        public override T? FromBytes(byte[] bytes, bool keepUnrecognizedValues = false)
+        {
+            if (bytes.Length >= 4 && bytes[0] == 's' && bytes[1] == 'k' && bytes[2] == 'i' && bytes[3] == 'r')
+            {
+                int o = 4;
+                return DecodeInternal(bytes, ref o, keepUnrecognizedValues);
+            }
+            return FromJson(Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
+        }
+
         public override TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
     }
 
     private sealed class ArraySerializer_<T>(Serializer<T> inner) : Serializer<ImmutableList<T>>
     {
+        internal override bool IsDefaultInternal(ImmutableList<T> v) => v.Count == 0;
+
+        internal override void ToJsonInternal(ImmutableList<T> v, string? eolIndent, StringBuilder sb)
+        {
+            sb.Append('[');
+            for (int i = 0; i < v.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                string? childIndent = eolIndent != null ? eolIndent + "  " : null;
+                if (childIndent != null) sb.Append(childIndent);
+                inner.ToJsonInternal(v[i], childIndent, sb);
+            }
+            if (eolIndent != null && v.Count > 0) sb.Append(eolIndent);
+            sb.Append(']');
+        }
+
+        internal override ImmutableList<T> FromJsonInternal(JsonElement json, bool keep)
+        {
+            if (json.ValueKind != JsonValueKind.Array) return ImmutableList<T>.Empty;
+            var builder = ImmutableList.CreateBuilder<T>();
+            foreach (var item in json.EnumerateArray()) builder.Add(inner.FromJsonInternal(item, keep));
+            return builder.ToImmutable();
+        }
+
+        internal override void EncodeInternal(ImmutableList<T> v, List<byte> output)
+        {
+            int n = v.Count;
+            if (n == 0) { output.Add(246); return; }
+            if (n <= 3) output.Add((byte)(246 + n));
+            else { output.Add(250); EncodeUint32((uint)n, output); }
+            foreach (var item in v) inner.EncodeInternal(item, output);
+        }
+
+        internal override ImmutableList<T> DecodeInternal(byte[] data, ref int offset, bool keep)
+        {
+            if (offset >= data.Length) return ImmutableList<T>.Empty;
+            byte wire = ReadU8(data, ref offset);
+            if (wire == 0 || wire == 246) return ImmutableList<T>.Empty;
+
+            int count = wire == 250 ? (int)DecodeNumber(data, ref offset) : wire - 246;
+            var builder = ImmutableList.CreateBuilder<T>();
+            for (int i = 0; i < count; i++) builder.Add(inner.DecodeInternal(data, ref offset, keep));
+            return builder.ToImmutable();
+        }
+
         public override string ToJson(ImmutableList<T> value, bool readable = false)
-            => "[" + string.Join(",", value.Select(v => inner.ToJson(v, readable))) + "]";
-        public override byte[] ToBytes(ImmutableList<T> value) => [];
-        public override ImmutableList<T> FromJson(string json, bool keepUnrecognizedValues = false) => ImmutableList<T>.Empty;
-        public override ImmutableList<T> FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => ImmutableList<T>.Empty;
+        {
+            var sb = new StringBuilder();
+            ToJsonInternal(value, readable ? "\n" : null, sb);
+            return sb.ToString();
+        }
+
+        public override byte[] ToBytes(ImmutableList<T> value)
+        {
+            var buf = new List<byte> { (byte)'s', (byte)'k', (byte)'i', (byte)'r' };
+            EncodeInternal(value, buf);
+            return [.. buf];
+        }
+
+        public override ImmutableList<T> FromJson(string json, bool keepUnrecognizedValues = false)
+        {
+            using var doc = JsonDocument.Parse(json);
+            return FromJsonInternal(doc.RootElement, keepUnrecognizedValues);
+        }
+
+        public override ImmutableList<T> FromBytes(byte[] bytes, bool keepUnrecognizedValues = false)
+        {
+            if (bytes.Length >= 4 && bytes[0] == 's' && bytes[1] == 'k' && bytes[2] == 'i' && bytes[3] == 'r')
+            {
+                int o = 4;
+                return DecodeInternal(bytes, ref o, keepUnrecognizedValues);
+            }
+            return FromJson(Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
+        }
+
         public override TypeDescriptor TypeDescriptor { get; } = new ArrayDescriptor(inner.TypeDescriptor);
     }
 }

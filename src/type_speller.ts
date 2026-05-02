@@ -137,4 +137,87 @@ export class TypeSpeller {
       }
     }
   }
+
+  /**
+   * Returns a C# expression for the serializer of `type`.
+   * In `initCtx` (called from InitAdapter_), struct/enum types return their `_adapter`
+   * field directly rather than calling `.Serializer` (which would trigger init recursively).
+   */
+  getSerializerExpr(
+    type: ResolvedType,
+    initCtx: boolean,
+    isRecursive: false | "soft" | "via-optional" | "hard" = false,
+  ): string {
+    if (isRecursive === "hard") {
+      // Serializer is Serializer<T> (the plain struct/enum type).
+      return this.getSerializerExprInner(type, initCtx);
+    }
+    if (isRecursive === "via-optional") {
+      // type must be optional; C# property is Recursive<T>?.
+      // We need Serializer<T?> where T is the inner struct.
+      if (type.kind !== "optional") {
+        throw new Error(
+          "via-optional recursive field must have an optional underlying type.",
+        );
+      }
+      const innerExpr = this.getSerializerExprInner(type.other, initCtx);
+      return `global::SkirClient.Serializers.OptionalValue(${innerExpr})`;
+    }
+    return this.getSerializerExprInner(type, initCtx);
+  }
+
+  private getSerializerExprInner(type: ResolvedType, initCtx: boolean): string {
+    switch (type.kind) {
+      case "primitive": {
+        switch (type.primitive) {
+          case "bool":
+            return "global::SkirClient.Serializers.Bool";
+          case "int32":
+            return "global::SkirClient.Serializers.Int32";
+          case "int64":
+            return "global::SkirClient.Serializers.Int64";
+          case "hash64":
+            return "global::SkirClient.Serializers.Hash64";
+          case "float32":
+            return "global::SkirClient.Serializers.Float32";
+          case "float64":
+            return "global::SkirClient.Serializers.Float64";
+          case "string":
+            return "global::SkirClient.Serializers.String";
+          case "timestamp":
+            return "global::SkirClient.Serializers.Timestamp";
+          case "bytes":
+            return "global::SkirClient.Serializers.Bytes";
+        }
+        throw new Error(`Unknown primitive type: ${type.primitive}`);
+      }
+      case "record": {
+        const loc = this.recordMap.get(type.key)!;
+        const ns = modulePathToNamespace(loc.modulePath);
+        const cname = getTypeName(loc);
+        const fqn = `global::${ns}.${cname}`;
+        return initCtx ? `${fqn}._adapter` : `${fqn}.Serializer`;
+      }
+      case "array": {
+        const itemExpr = this.getSerializerExprInner(type.item, initCtx);
+        return `global::SkirClient.Serializers.Array(${itemExpr})`;
+      }
+      case "optional": {
+        const inner = type.other;
+        const innerExpr = this.getSerializerExprInner(inner, initCtx);
+        // Determine if inner type is a value type (struct/primitive) or ref type (enum/string/array).
+        const isValueType =
+          (inner.kind === "record" &&
+            this.recordMap.get(inner.key)!.record.recordType === "struct") ||
+          (inner.kind === "primitive" && inner.primitive !== "string");
+        return isValueType
+          ? `global::SkirClient.Serializers.OptionalValue(${innerExpr})`
+          : `global::SkirClient.Serializers.Optional(${innerExpr})`;
+      }
+    }
+
+    throw new Error(
+      `Unsupported type kind: ${(type as { kind: string }).kind}`,
+    );
+  }
 }
