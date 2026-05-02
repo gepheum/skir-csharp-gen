@@ -160,27 +160,13 @@ export function toFieldPropertyName(
   return base;
 }
 
-export function doVariantNamesNeedSuffix(
-  variants: readonly Field[],
-  nestedTypeNames: ReadonlySet<string>,
-): boolean {
-  const seen = new Set<string>();
-  for (const variant of variants) {
-    const candidate = toTypeSegment(variant.name.text);
-    if (
-      candidate === "UNKNOWN" ||
-      seen.has(candidate) ||
-      nestedTypeNames.has(candidate)
-    ) {
-      return true;
-    }
-    seen.add(candidate);
+export function toVariantTypeName(
+  variant: Field,
+  reservedNames: ReadonlySet<string>,
+): string {
+  let name = toTypeSegment(variant.name.text);
+  while (reservedNames.has(name)) {
+    name = `${name}_`;
   }
-  return false;
-}
-
-export function toVariantTypeName(variant: Field, addSuffix: boolean): string {
-  const base = toTypeSegment(variant.name.text);
-  const suffix = addSuffix ? (variant.type ? "Wrapper" : "Const") : "";
-  return `${base}${suffix}`;
+  return name;
 }

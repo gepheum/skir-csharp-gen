@@ -6,7 +6,6 @@ import {
 } from "skir-internal";
 import { z } from "zod";
 import {
-  doVariantNamesNeedSuffix,
   getTypeName,
   modulePathToNamespace,
   toFieldPropertyName,
@@ -170,16 +169,12 @@ class CsharpSourceFileGenerator {
     const body2Indent = "    ".repeat(indentLevel + 2);
     const variants = record.record.fields;
 
-    // Nested Skir records are emitted as top-level C# types, so enum bodies
-    // only contain variants. Still include enum name to avoid CS0542.
-    const nestedTypeNames = new Set<string>();
-    nestedTypeNames.add(name);
-    const addSuffix = doVariantNamesNeedSuffix(variants, nestedTypeNames);
+    // Reserved names within the enum body: UNKNOWN is always synthesized, and
+    // the enum name itself must not be reused (CS0542-equivalent for records).
+    const reservedVariantNames = new Set<string>(["UNKNOWN", name]);
 
-    // When a nested type shadows the outer enum name in C# (e.g. enum Kind has
-    // nested enum Kind_), we need fully-qualified base class reference so that
-    // variant records like 'Kind' can correctly inherit from the outer 'Kind'.
-    // Using global:: prefix always avoids any ambiguity.
+    // Using global:: prefix always avoids ambiguity when a variant name
+    // matches the enum name.
     const fqBase = this.getFullyQualifiedTypeName(record);
 
     this.lines.push(`${indent}public abstract record ${name}`);
@@ -202,7 +197,7 @@ class CsharpSourceFileGenerator {
     }
 
     for (const variant of variants) {
-      const variantTypeName = toVariantTypeName(variant, addSuffix);
+      const variantTypeName = toVariantTypeName(variant, reservedVariantNames);
       if (variant.type) {
         const payloadType = this.typeSpeller.getCsharpType(variant.type);
         const defaultExpr = this.typeSpeller.getDefaultExpr(variant.type);
