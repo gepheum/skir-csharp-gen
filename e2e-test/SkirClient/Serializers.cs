@@ -129,8 +129,8 @@ public static class Serializers
             case 237: return (int)ReadU32(data, ref offset);
             case 238:
             case 239: return (long)ReadU64(data, ref offset);
-            case 240: return ReadU32(data, ref offset);
-            case 241: return (long)ReadU64(data, ref offset);
+            case 240: return (long)Math.Round(BitConverter.UInt32BitsToSingle(ReadU32(data, ref offset)));
+            case 241: return (long)Math.Round(BitConverter.Int64BitsToDouble((long)ReadU64(data, ref offset)));
             default: return 0;
         }
     }
@@ -407,8 +407,13 @@ public static class Serializers
     {
         public bool IsDefault(float input) => input == 0f;
 
-        public void ToJson(float input, string? eolIndent, StringBuilder output) =>
+        public void ToJson(float input, string? eolIndent, StringBuilder output)
+        {
+            if (float.IsNaN(input)) { WriteJsonString("NaN", output); return; }
+            if (float.IsPositiveInfinity(input)) { WriteJsonString("Infinity", output); return; }
+            if (float.IsNegativeInfinity(input)) { WriteJsonString("-Infinity", output); return; }
             output.Append(input.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+        }
 
         public float FromJson(JsonElement json, bool keepUnrecognizedValues)
         {
@@ -438,7 +443,14 @@ public static class Serializers
         }
 
         public float Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
-            => BitConverter.UInt32BitsToSingle((uint)DecodeNumber(data, ref offset));
+        {
+            byte wire = ReadU8(data, ref offset);
+            if (wire == 240)
+                return BitConverter.UInt32BitsToSingle(ReadU32(data, ref offset));
+            if (wire == 241)
+                return (float)BitConverter.Int64BitsToDouble((long)ReadU64(data, ref offset));
+            return (float)DecodeNumberBody(wire, data, ref offset);
+        }
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Float32);
     }
@@ -447,8 +459,13 @@ public static class Serializers
     {
         public bool IsDefault(double input) => input == 0d;
 
-        public void ToJson(double input, string? eolIndent, StringBuilder output) =>
+        public void ToJson(double input, string? eolIndent, StringBuilder output)
+        {
+            if (double.IsNaN(input)) { WriteJsonString("NaN", output); return; }
+            if (double.IsPositiveInfinity(input)) { WriteJsonString("Infinity", output); return; }
+            if (double.IsNegativeInfinity(input)) { WriteJsonString("-Infinity", output); return; }
             output.Append(input.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+        }
 
         public double FromJson(JsonElement json, bool keepUnrecognizedValues)
         {
@@ -477,7 +494,14 @@ public static class Serializers
         }
 
         public double Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
-            => BitConverter.Int64BitsToDouble((long)DecodeNumber(data, ref offset));
+        {
+            byte wire = ReadU8(data, ref offset);
+            if (wire == 241)
+                return BitConverter.Int64BitsToDouble((long)ReadU64(data, ref offset));
+            if (wire == 240)
+                return BitConverter.UInt32BitsToSingle(ReadU32(data, ref offset));
+            return DecodeNumberBody(wire, data, ref offset);
+        }
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Float64);
     }
@@ -680,12 +704,17 @@ public static class Serializers
 
         public void Encode(T? v, List<byte> output)
         {
-            if (v is null) output.Add(0);
+            if (v is null) output.Add(255);
             else inner.Encode(v, output);
         }
 
         public T? Decode(byte[] data, ref int offset, bool keep)
         {
+            if (offset < data.Length && data[offset] == 255)
+            {
+                offset++;
+                return null;
+            }
             var result = inner.Decode(data, ref offset, keep);
             return inner.IsDefault(result) ? null : result;
         }
@@ -738,12 +767,17 @@ public static class Serializers
 
         public void Encode(T? v, List<byte> output)
         {
-            if (v is null) output.Add(0);
+            if (v is null) output.Add(255);
             else inner.Encode(v.Value, output);
         }
 
         public T? Decode(byte[] data, ref int offset, bool keep)
         {
+            if (offset < data.Length && data[offset] == 255)
+            {
+                offset++;
+                return null;
+            }
             var result = inner.Decode(data, ref offset, keep);
             return inner.IsDefault(result) ? null : (T?)result;
         }

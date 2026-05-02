@@ -248,6 +248,12 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
         sb.Append('0');
     }
 
+    private T UnknownFromJson(int number) =>
+        _wrapUnrecognized(UnrecognizedVariant<T>.FromJson(number, Array.Empty<byte>()));
+
+    private T UnknownFromBytes(int number) =>
+        _wrapUnrecognized(UnrecognizedVariant<T>.FromBytes(number, Array.Empty<byte>()));
+
     private T FromJsonImpl(JsonElement json, bool keep)
     {
         switch (json.ValueKind)
@@ -265,8 +271,8 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
             {
                 string s = json.GetString()!;
                 if (!_nameToKindOrdinal.TryGetValue(s, out int ko))
-                    return _default;
-                if (ko == 0) return _default;
+                    return UnknownFromJson(0);
+                if (ko == 0) return UnknownFromJson(0);
                 if (ko < _kindOrdinalToEntry.Count && _kindOrdinalToEntry[ko] is IVariantEntry entry)
                 {
                     if (entry.Constant is T c) return c;
@@ -287,8 +293,8 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
                     ? kp.GetString()! : "";
                 var valJson = json.TryGetProperty("value", out var vp) ? vp : default;
                 if (!_nameToKindOrdinal.TryGetValue(kindName, out int ko))
-                    return _default;
-                if (ko == 0) return _default;
+                    return UnknownFromJson(0);
+                if (ko == 0) return UnknownFromJson(0);
                 if (ko < _kindOrdinalToEntry.Count && _kindOrdinalToEntry[ko] is IVariantEntry entry)
                 {
                     if (entry.Constant is T c) return c;
@@ -311,7 +317,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
                 byte[] bytes = Encoding.UTF8.GetBytes(rawJson.GetRawText());
                 return _wrapUnrecognized(UnrecognizedVariant<T>.FromJson(number, bytes));
             }
-            return _default;
+            return UnknownFromJson(number);
         }
         if (ae.Kind == EntryKind.Removed) return _default;
         var ko = ae.KindOrdinal;
@@ -334,7 +340,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
                 byte[] bytes = Encoding.UTF8.GetBytes(rawJson.GetRawText());
                 return _wrapUnrecognized(UnrecognizedVariant<T>.FromJson(number, bytes));
             }
-            return _default;
+            return UnknownFromJson(number);
         }
         if (ae.Kind == EntryKind.Removed) return _default;
         var ko = ae.KindOrdinal;
@@ -409,7 +415,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
                 return _wrapUnrecognized(UnrecognizedVariant<T>.FromBytes(number, allBytes));
             }
             Serializers.SkipValue_(data, ref offset);
-            return _default;
+            return UnknownFromBytes(number);
         }
 
         if (ae.Kind == EntryKind.Removed)
@@ -442,7 +448,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
                 Serializers.EncodeUint32_((uint)number, buf);
                 return _wrapUnrecognized(UnrecognizedVariant<T>.FromBytes(number, [.. buf]));
             }
-            return _default;
+            return UnknownFromBytes(number);
         }
         if (ae.Kind == EntryKind.Removed) return _default;
         var ko = ae.KindOrdinal;
