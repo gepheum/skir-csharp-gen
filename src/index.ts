@@ -197,7 +197,7 @@ class CsharpSourceFileGenerator {
     // Pre-compute property names to reuse in both field declarations and InitAdapter_.
     const fieldInfos = this.computeFieldInfos(record, name);
 
-    // Collect field info for DEFAULT init, Builder_, and the build lambda.
+    // Collect field info for Default init, Builder_, and the build lambda.
     const fieldDefaults: Array<{ propertyName: string; defaultExpr: string }> =
       [];
 
@@ -223,7 +223,7 @@ class CsharpSourceFileGenerator {
         ? `new() { ${fieldDefaults.map((f) => `${f.propertyName} = ${f.defaultExpr}`).join(", ")} }`
         : "new()";
     this.lines.push(
-      `${bodyIndent}public static readonly ${name} DEFAULT = ${defaultInit};`,
+      `${bodyIndent}public static readonly ${name} Default = ${defaultInit};`,
     );
     this.lines.push("");
 
@@ -256,7 +256,7 @@ class CsharpSourceFileGenerator {
       `${bodyIndent}private static readonly global::SkirClient.StructAdapter<${fqName}, Builder_> _adapter =`,
     );
     this.lines.push(
-      `${bodyIndent}    new(${name}.DEFAULT, ${JSON.stringify(modulePath)}, ${JSON.stringify(qualifiedName)}, ${JSON.stringify(structDoc)},`,
+      `${bodyIndent}    new(${name}.Default, ${JSON.stringify(modulePath)}, ${JSON.stringify(qualifiedName)}, ${JSON.stringify(structDoc)},`,
     );
     this.lines.push(`${bodyIndent}        ${newBuilderLambda},`);
     this.lines.push(`${bodyIndent}        ${buildLambda},`);
@@ -475,6 +475,7 @@ class CsharpSourceFileGenerator {
   ): Array<{ field: Field; propertyName: string }> {
     const result: Array<{ field: Field; propertyName: string }> = [];
     const usedNames = new Set<string>([
+      "Default",
       "DEFAULT",
       "Serializer",
       "InitAdapter_",

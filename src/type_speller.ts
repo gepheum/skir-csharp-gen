@@ -103,7 +103,10 @@ export class TypeSpeller {
     switch (type.kind) {
       case "record": {
         const csharpType = this.getCsharpType(type);
-        return `${csharpType}.DEFAULT`;
+        const recordLocation = this.recordMap.get(type.key)!;
+        return recordLocation.record.recordType === "struct"
+          ? `${csharpType}.Default`
+          : `${csharpType}.DEFAULT`;
       }
       case "array": {
         const itemType = this.getCsharpType(type.item);
