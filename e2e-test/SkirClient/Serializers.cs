@@ -38,6 +38,10 @@ public static class Serializers
     public static Serializer<ImmutableList<T>> Array<T>(Serializer<T> inner)
         => new(new ArrayAdapter_<T>(inner));
 
+    /// <summary>Serializer for a recursive struct field (<see cref="Recursive{T}"/>).</summary>
+    public static Serializer<Recursive<T>> RecursiveSerializer<T>(Serializer<T> inner) where T : struct
+        => new(new RecursiveAdapter_<T>(inner));
+
     // ---- BoolAdapter ----
 
     private sealed class BoolAdapter : ITypeAdapter<bool>
@@ -735,6 +739,32 @@ public static class Serializers
         }
 
         public TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
+    }
+
+    private sealed class RecursiveAdapter_<T>(Serializer<T> inner) : ITypeAdapter<Recursive<T>> where T : struct
+    {
+        public bool IsDefault(Recursive<T> r) =>
+            r.IsDefaultValue || inner.IsDefault(r.Value);
+
+        public void ToJson(Recursive<T> r, string? eolIndent, StringBuilder sb) =>
+            inner.ToJson(r.Value, eolIndent, sb);
+
+        public Recursive<T> FromJson(JsonElement json, bool keep)
+        {
+            T value = inner.FromJson(json, keep);
+            return inner.IsDefault(value) ? Recursive<T>.DefaultValue : Recursive<T>.FromValue(value);
+        }
+
+        public void Encode(Recursive<T> r, List<byte> output) =>
+            inner.Encode(r.Value, output);
+
+        public Recursive<T> Decode(byte[] data, ref int offset, bool keep)
+        {
+            T value = inner.Decode(data, ref offset, keep);
+            return inner.IsDefault(value) ? Recursive<T>.DefaultValue : Recursive<T>.FromValue(value);
+        }
+
+        public TypeDescriptor TypeDescriptor => inner.TypeDescriptor;
     }
 
     private sealed class OptionalValueAdapter_<T>(Serializer<T> inner) : ITypeAdapter<T?> where T : struct

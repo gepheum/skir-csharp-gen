@@ -428,50 +428,13 @@ class CsharpSourceFileGenerator {
     return result;
   }
 
-  /** Returns a lambda expression `x => …` that retrieves the field value in
-   *  the type expected by the serializer (unwrapping Recursive<T> if needed). */
-  private makeStructFieldGetter(field: Field, propertyName: string): string {
-    if (field.isRecursive === "hard") {
-      const innerType = this.typeSpeller.getCsharpType(field.type!);
-      return (
-        `x => x.${propertyName}.HasValue ` +
-        `? x.${propertyName}.Value : ${innerType}.DEFAULT`
-      );
-    }
-    if (field.isRecursive === "via-optional") {
-      if (field.type!.kind !== "optional") {
-        throw new Error("via-optional field must have optional type");
-      }
-      const innerType = this.typeSpeller.getCsharpType(field.type!.other);
-      return (
-        `x => x.${propertyName}.HasValue ` +
-        `? (${innerType}?)x.${propertyName}.Value.Value : null`
-      );
-    }
+  /** Returns a lambda expression `x => …` that retrieves the field value. */
+  private makeStructFieldGetter(_field: Field, propertyName: string): string {
     return `x => x.${propertyName}`;
   }
 
-  /** Returns a lambda expression `(b, v) => …` that sets the field value on
-   *  the builder, wrapping in Recursive<T> if needed. */
-  private makeStructFieldSetter(field: Field, propertyName: string): string {
-    if (field.isRecursive === "hard") {
-      const innerType = this.typeSpeller.getCsharpType(field.type!);
-      return (
-        `(b, v) => b.${propertyName} = ` +
-        `global::SkirClient.Recursive<${innerType}>.FromValue(v)`
-      );
-    }
-    if (field.isRecursive === "via-optional") {
-      if (field.type!.kind !== "optional") {
-        throw new Error("via-optional field must have optional type");
-      }
-      const innerType = this.typeSpeller.getCsharpType(field.type!.other);
-      return (
-        `(b, v) => b.${propertyName} = v == null ` +
-        `? (global::SkirClient.Recursive<${innerType}>?)null ` +
-        `: global::SkirClient.Recursive<${innerType}>.FromValue(v.GetValueOrDefault())`
-      );
-    }
+  /** Returns a lambda expression `(b, v) => …` that sets the field value on the builder. */
+  private makeStructFieldSetter(_field: Field, propertyName: string): string {
     return `(b, v) => b.${propertyName} = v`;
   }
 

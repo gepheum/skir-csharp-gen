@@ -149,19 +149,19 @@ export class TypeSpeller {
     isRecursive: false | "soft" | "via-optional" | "hard" = false,
   ): string {
     if (isRecursive === "hard") {
-      // Serializer is Serializer<T> (the plain struct/enum type).
-      return this.getSerializerExprInner(type, initCtx);
+      // Property type is Recursive<T>. Wrap the inner serializer.
+      const innerExpr = this.getSerializerExprInner(type, initCtx);
+      return `global::SkirClient.Serializers.RecursiveSerializer(${innerExpr})`;
     }
     if (isRecursive === "via-optional") {
-      // type must be optional; C# property is Recursive<T>?.
-      // We need Serializer<T?> where T is the inner struct.
+      // Property type is Recursive<T>?. type is optional(T).
       if (type.kind !== "optional") {
         throw new Error(
           "via-optional recursive field must have an optional underlying type.",
         );
       }
       const innerExpr = this.getSerializerExprInner(type.other, initCtx);
-      return `global::SkirClient.Serializers.OptionalValue(${innerExpr})`;
+      return `global::SkirClient.Serializers.OptionalValue(global::SkirClient.Serializers.RecursiveSerializer(${innerExpr}))`;
     }
     return this.getSerializerExprInner(type, initCtx);
   }
