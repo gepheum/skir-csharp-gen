@@ -17,8 +17,15 @@ namespace SkirClient;
 /// Every generated struct and enum exposes a static <c>Serializer</c> property
 /// that returns an instance of this class.
 /// </summary>
-public abstract class Serializer<T>
+public sealed class Serializer<T>
 {
+    private readonly ITypeAdapter<T> _adapter;
+
+    internal Serializer(ITypeAdapter<T> adapter)
+    {
+        _adapter = adapter;
+    }
+
     /// <summary>
     /// Serializes <paramref name="value"/> to JSON.
     /// <para>
@@ -32,10 +39,24 @@ public abstract class Serializer<T>
     /// name-based, indented JSON — use this for debugging only.
     /// </para>
     /// </summary>
-    public abstract string ToJson(T value, bool readable = false);
+    public string ToJson(T value, bool readable = false)
+    {
+        var sb = new StringBuilder();
+        _adapter.ToJsonInternal(value, readable ? "\n" : null, sb);
+        return sb.ToString();
+    }
 
     /// <summary>Serializes <paramref name="value"/> to compact binary format.</summary>
-    public abstract byte[] ToBytes(T value);
+    public byte[] ToBytes(T value)
+    {
+        var output = new List<byte>(5);
+        output.Add((byte)'s');
+        output.Add((byte)'k');
+        output.Add((byte)'i');
+        output.Add((byte)'r');
+        _adapter.EncodeInternal(value, output);
+        return output.ToArray();
+    }
 
     /// <summary>
     /// Deserializes a value from JSON.
@@ -45,39 +66,48 @@ public abstract class Serializer<T>
     /// unrecognized-fields store so that re-serializing the value does not
     /// silently discard forward-compatible fields.
     /// </summary>
-    public abstract T FromJson(string json, bool keepUnrecognizedValues = false);
+    public T FromJson(string json, bool keepUnrecognizedValues = false)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return _adapter.FromJsonInternal(doc.RootElement, keepUnrecognizedValues);
+    }
 
     /// <summary>
     /// Deserializes a value from binary format.
     /// When <paramref name="keepUnrecognizedValues"/> is <c>true</c>, unrecognized
     /// field data is preserved for round-trip fidelity.
     /// </summary>
-    public abstract T FromBytes(byte[] bytes, bool keepUnrecognizedValues = false);
-
-    // Internal fast-path hooks used by generated adapters.
-    internal virtual bool IsDefaultInternal(T value)
-        => EqualityComparer<T>.Default.Equals(value, default!);
-
-    internal virtual void ToJsonInternal(T value, string? eolIndent, StringBuilder output)
-        => output.Append(ToJson(value, eolIndent != null));
-
-    internal virtual T FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
-        => FromJson(json.GetRawText(), keepUnrecognizedValues);
-
-    internal virtual void EncodeInternal(T value, List<byte> output)
-        => output.AddRange(ToBytes(value));
-
-    internal virtual T DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
+    public T FromBytes(byte[] bytes, bool keepUnrecognizedValues = false)
     {
-        int remaining = data.Length - offset;
-        byte[] slice = new byte[remaining];
-        Buffer.BlockCopy(data, offset, slice, 0, remaining);
-        offset = data.Length;
-        return FromBytes(slice, keepUnrecognizedValues);
+        if (bytes.Length >= 4 &&
+            bytes[0] == 's' && bytes[1] == 'k' &&
+            bytes[2] == 'i' && bytes[3] == 'r')
+        {
+            int offset = 4;
+            return _adapter.DecodeInternal(bytes, ref offset, keepUnrecognizedValues);
+        }
+        // No magic prefix - treat payload as UTF-8 JSON.
+        return FromJson(Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
     }
 
+    // Internal fast-path hooks used by generated adapters.
+    internal bool IsDefaultInternal(T value)
+        => _adapter.IsDefaultInternal(value);
+
+    internal void ToJsonInternal(T value, string? eolIndent, StringBuilder output)
+        => _adapter.ToJsonInternal(value, eolIndent, output);
+
+    internal T FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        => _adapter.FromJsonInternal(json, keepUnrecognizedValues);
+
+    internal void EncodeInternal(T value, List<byte> output)
+        => _adapter.EncodeInternal(value, output);
+
+    internal T DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        => _adapter.DecodeInternal(data, ref offset, keepUnrecognizedValues);
+
     /// <summary>Reflection descriptor for this type's schema.</summary>
-    public abstract TypeDescriptor TypeDescriptor { get; }
+    public TypeDescriptor TypeDescriptor => _adapter.TypeDescriptor;
 }
 
 // =============================================================================
@@ -86,13 +116,13 @@ public abstract class Serializer<T>
 
 /// <summary>
 /// Internal serialization contract for a single type.
-/// Implemented by primitive adapters and used by
-/// <see cref="TypeAdapterSerializer{T}"/> to back a <see cref="Serializer{T}"/>.
+/// Implemented by concrete type adapters and wrapped by
+/// <see cref="Serializer{T}"/>.
 /// </summary>
 internal interface ITypeAdapter<T>
 {
     /// <summary>Returns <c>true</c> when <paramref name="input"/> equals the default (zero) value.</summary>
-    bool IsDefault(T input);
+    bool IsDefaultInternal(T input);
 
     /// <summary>
     /// Appends the JSON representation of <paramref name="input"/> to
@@ -101,91 +131,23 @@ internal interface ITypeAdapter<T>
     /// <paramref name="eolIndent"/> is <c>"\n"</c> followed by the
     /// current indentation prefix.
     /// </summary>
-    void ToJson(T input, string? eolIndent, StringBuilder output);
+    void ToJsonInternal(T input, string? eolIndent, StringBuilder output);
 
     /// <summary>Deserializes a value from a parsed JSON token.</summary>
-    T FromJson(JsonElement json, bool keepUnrecognizedValues);
+    T FromJsonInternal(JsonElement json, bool keepUnrecognizedValues);
 
     /// <summary>Appends the binary encoding of <paramref name="input"/> to <paramref name="output"/>.</summary>
-    void Encode(T input, List<byte> output);
+    void EncodeInternal(T input, List<byte> output);
 
     /// <summary>
     /// Reads one encoded value from <paramref name="data"/> starting at
     /// <paramref name="offset"/>, advancing <paramref name="offset"/> past
     /// the consumed bytes.
     /// </summary>
-    T Decode(byte[] data, ref int offset, bool keepUnrecognizedValues);
+    T DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues);
 
     /// <summary>Returns the reflection descriptor for this type.</summary>
     TypeDescriptor TypeDescriptor { get; }
-}
-
-// =============================================================================
-// TypeAdapterSerializer<T>
-// =============================================================================
-
-/// <summary>
-/// A <see cref="Serializer{T}"/> that delegates all work to an
-/// <see cref="ITypeAdapter{T}"/>. Used for primitive and composite types.
-/// </summary>
-internal sealed class TypeAdapterSerializer<T> : Serializer<T>
-{
-    private readonly ITypeAdapter<T> _adapter;
-
-    internal TypeAdapterSerializer(ITypeAdapter<T> adapter) => _adapter = adapter;
-
-    public override string ToJson(T value, bool readable = false)
-    {
-        var sb = new StringBuilder();
-        _adapter.ToJson(value, readable ? "\n" : null, sb);
-        return sb.ToString();
-    }
-
-    public override byte[] ToBytes(T value)
-    {
-        var output = new List<byte>(5);
-        output.Add((byte)'s');
-        output.Add((byte)'k');
-        output.Add((byte)'i');
-        output.Add((byte)'r');
-        _adapter.Encode(value, output);
-        return output.ToArray();
-    }
-
-    public override T FromJson(string json, bool keepUnrecognizedValues = false)
-    {
-        using var doc = JsonDocument.Parse(json);
-        return _adapter.FromJson(doc.RootElement, keepUnrecognizedValues);
-    }
-
-    public override T FromBytes(byte[] bytes, bool keepUnrecognizedValues = false)
-    {
-        if (bytes.Length >= 4 &&
-            bytes[0] == 's' && bytes[1] == 'k' &&
-            bytes[2] == 'i' && bytes[3] == 'r')
-        {
-            int offset = 4;
-            return _adapter.Decode(bytes, ref offset, keepUnrecognizedValues);
-        }
-        // No magic prefix — treat payload as UTF-8 JSON.
-        return FromJson(Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
-    }
-
-    internal override bool IsDefaultInternal(T value) => _adapter.IsDefault(value);
-
-    internal override void ToJsonInternal(T value, string? eolIndent, StringBuilder output)
-        => _adapter.ToJson(value, eolIndent, output);
-
-    internal override T FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
-        => _adapter.FromJson(json, keepUnrecognizedValues);
-
-    internal override void EncodeInternal(T value, List<byte> output)
-        => _adapter.Encode(value, output);
-
-    internal override T DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
-        => _adapter.Decode(data, ref offset, keepUnrecognizedValues);
-
-    public override TypeDescriptor TypeDescriptor => _adapter.TypeDescriptor;
 }
 
 // =============================================================================
@@ -197,35 +159,35 @@ internal sealed class TypeAdapterSerializer<T> : Serializer<T>
 /// </summary>
 public static class Serializers
 {
-    public static Serializer<bool>     Bool      { get; } = new TypeAdapterSerializer<bool>(new BoolAdapter());
-    public static Serializer<int>      Int32     { get; } = new TypeAdapterSerializer<int>(new Int32Adapter());
-    public static Serializer<long>     Int64     { get; } = new TypeAdapterSerializer<long>(new Int64Adapter());
-    public static Serializer<ulong>    Hash64    { get; } = new TypeAdapterSerializer<ulong>(new Hash64Adapter());
-    public static Serializer<float>    Float32   { get; } = new Float32Serializer_();
-    public static Serializer<double>   Float64   { get; } = new Float64Serializer_();
-    public static Serializer<string>   String    { get; } = new TypeAdapterSerializer<string>(new StringAdapter());
-    public static Serializer<ImmutableBytes> Bytes { get; } = new TypeAdapterSerializer<ImmutableBytes>(new BytesAdapter());
-    public static Serializer<DateTimeOffset> Timestamp { get; } = new TypeAdapterSerializer<DateTimeOffset>(new TimestampAdapter());
+    public static Serializer<bool>     Bool      { get; } = new(new BoolAdapter());
+    public static Serializer<int>      Int32     { get; } = new(new Int32Adapter());
+    public static Serializer<long>     Int64     { get; } = new(new Int64Adapter());
+    public static Serializer<ulong>    Hash64    { get; } = new(new Hash64Adapter());
+    public static Serializer<float>    Float32   { get; } = new(new Float32Adapter());
+    public static Serializer<double>   Float64   { get; } = new(new Float64Adapter());
+    public static Serializer<string>   String    { get; } = new(new StringAdapter());
+    public static Serializer<ImmutableBytes> Bytes { get; } = new(new BytesAdapter());
+    public static Serializer<DateTimeOffset> Timestamp { get; } = new(new TimestampAdapter());
 
     /// <summary>Serializer for an optional (nullable) reference type.</summary>
     public static Serializer<T?> Optional<T>(Serializer<T> inner) where T : class
-        => new OptionalRefSerializer_<T>(inner);
+        => new(new OptionalRefAdapter_<T>(inner));
 
     /// <summary>Serializer for an optional (nullable) value type.</summary>
     public static Serializer<T?> OptionalValue<T>(Serializer<T> inner) where T : struct
-        => new OptionalValueSerializer_<T>(inner);
+        => new(new OptionalValueAdapter_<T>(inner));
 
     /// <summary>Serializer for a read-only list of values.</summary>
     public static Serializer<ImmutableList<T>> Array<T>(Serializer<T> inner)
-        => new ArraySerializer_<T>(inner);
+        => new(new ArrayAdapter_<T>(inner));
 
     // ---- BoolAdapter ----
 
     private sealed class BoolAdapter : ITypeAdapter<bool>
     {
-        public bool IsDefault(bool input) => !input;
+        public bool IsDefaultInternal(bool input) => !input;
 
-        public void ToJson(bool input, string? eolIndent, StringBuilder output)
+        public void ToJsonInternal(bool input, string? eolIndent, StringBuilder output)
         {
             if (eolIndent != null)
                 output.Append(input ? "true" : "false");
@@ -233,7 +195,7 @@ public static class Serializers
                 output.Append(input ? '1' : '0');
         }
 
-        public bool FromJson(JsonElement json, bool keepUnrecognizedValues)
+        public bool FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -246,10 +208,10 @@ public static class Serializers
             };
         }
 
-        public void Encode(bool input, List<byte> output) =>
+        public void EncodeInternal(bool input, List<byte> output) =>
             output.Add(input ? (byte)1 : (byte)0);
 
-        public bool Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        public bool DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
         {
             if (offset >= data.Length)
                 throw new InvalidOperationException("Unexpected end of input");
@@ -502,13 +464,13 @@ public static class Serializers
 
     private sealed class Int32Adapter : ITypeAdapter<int>
     {
-        public bool IsDefault(int input) => input == 0;
+        public bool IsDefaultInternal(int input) => input == 0;
 
         // Same in both dense and readable modes — always a JSON number.
-        public void ToJson(int input, string? eolIndent, StringBuilder output) =>
+        public void ToJsonInternal(int input, string? eolIndent, StringBuilder output) =>
             output.Append(input);
 
-        public int FromJson(JsonElement json, bool keepUnrecognizedValues)
+        public int FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -523,9 +485,9 @@ public static class Serializers
             };
         }
 
-        public void Encode(int input, List<byte> output) => EncodeI32(input, output);
+        public void EncodeInternal(int input, List<byte> output) => EncodeI32(input, output);
 
-        public int Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+        public int DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
             (int)DecodeNumber(data, ref offset);
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Int32);
@@ -537,9 +499,9 @@ public static class Serializers
 
     private sealed class Int64Adapter : ITypeAdapter<long>
     {
-        public bool IsDefault(long input) => input == 0;
+        public bool IsDefaultInternal(long input) => input == 0;
 
-        public void ToJson(long input, string? eolIndent, StringBuilder output)
+        public void ToJsonInternal(long input, string? eolIndent, StringBuilder output)
         {
             if (input >= -MaxSafeInt64Json && input <= MaxSafeInt64Json)
                 output.Append(input);
@@ -551,7 +513,7 @@ public static class Serializers
             }
         }
 
-        public long FromJson(JsonElement json, bool keepUnrecognizedValues)
+        public long FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -563,7 +525,7 @@ public static class Serializers
             };
         }
 
-        public void Encode(long input, List<byte> output)
+        public void EncodeInternal(long input, List<byte> output)
         {
             if (input >= int.MinValue && input <= int.MaxValue)
                 EncodeI32((int)input, output);
@@ -574,7 +536,7 @@ public static class Serializers
             }
         }
 
-        public long Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+        public long DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
             DecodeNumber(data, ref offset);
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Int64);
@@ -584,9 +546,9 @@ public static class Serializers
 
     private sealed class Hash64Adapter : ITypeAdapter<ulong>
     {
-        public bool IsDefault(ulong input) => input == 0;
+        public bool IsDefaultInternal(ulong input) => input == 0;
 
-        public void ToJson(ulong input, string? eolIndent, StringBuilder output)
+        public void ToJsonInternal(ulong input, string? eolIndent, StringBuilder output)
         {
             if (input <= MaxSafeHash64Json)
                 output.Append(input);
@@ -598,7 +560,7 @@ public static class Serializers
             }
         }
 
-        public ulong FromJson(JsonElement json, bool keepUnrecognizedValues)
+        public ulong FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -611,7 +573,7 @@ public static class Serializers
             };
         }
 
-        public void Encode(ulong input, List<byte> output)
+        public void EncodeInternal(ulong input, List<byte> output)
         {
             if (input <= 231) { output.Add((byte)input); }
             else if (input <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)input))); }
@@ -619,40 +581,101 @@ public static class Serializers
             else { output.Add(234); output.AddRange(LE(BitConverter.GetBytes(input))); }
         }
 
-        public ulong Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+        public ulong DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
             (ulong)DecodeNumber(data, ref offset);
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Hash64);
     }
 
-    // ---- Remaining primitive stubs ----
+    // ---- Remaining primitive adapters ----
 
 
-    private sealed class Float32Serializer_ : Serializer<float>
+    private sealed class Float32Adapter : ITypeAdapter<float>
     {
-        public override string ToJson(float value, bool readable = false) => value.ToString("G");
-        public override byte[] ToBytes(float value)  => [];
-        public override float FromJson(string json, bool keepUnrecognizedValues = false)  => float.Parse(json);
-        public override float FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => 0f;
-        public override TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor("float32");
+        public bool IsDefaultInternal(float input) => input == 0f;
+
+        public void ToJsonInternal(float input, string? eolIndent, StringBuilder output) =>
+            output.Append(input.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+
+        public float FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        {
+            return json.ValueKind switch
+            {
+                JsonValueKind.Number =>
+                    json.TryGetSingle(out float f) ? f : (float)json.GetDouble(),
+                JsonValueKind.String =>
+                    float.TryParse(json.GetString(), System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out float f)
+                        ? f : 0f,
+                _ => 0f,
+            };
+        }
+
+        public void EncodeInternal(float input, List<byte> output)
+        {
+            if (input == 0f)
+            {
+                output.Add(0);
+            }
+            else
+            {
+                output.Add(233);
+                output.AddRange(LE(BitConverter.GetBytes(BitConverter.SingleToUInt32Bits(input))));
+            }
+        }
+
+        public float DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
+            => BitConverter.UInt32BitsToSingle((uint)DecodeNumber(data, ref offset));
+
+        public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Float32);
     }
 
-    private sealed class Float64Serializer_ : Serializer<double>
+    private sealed class Float64Adapter : ITypeAdapter<double>
     {
-        public override string ToJson(double value, bool readable = false) => value.ToString("G");
-        public override byte[] ToBytes(double value)  => [];
-        public override double FromJson(string json, bool keepUnrecognizedValues = false)  => double.Parse(json);
-        public override double FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => 0d;
-        public override TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor("float64");
+        public bool IsDefaultInternal(double input) => input == 0d;
+
+        public void ToJsonInternal(double input, string? eolIndent, StringBuilder output) =>
+            output.Append(input.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+
+        public double FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        {
+            return json.ValueKind switch
+            {
+                JsonValueKind.Number => json.GetDouble(),
+                JsonValueKind.String =>
+                    double.TryParse(json.GetString(), System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out double d)
+                        ? d : 0d,
+                _ => 0d,
+            };
+        }
+
+        public void EncodeInternal(double input, List<byte> output)
+        {
+            if (input == 0d)
+            {
+                output.Add(0);
+            }
+            else
+            {
+                output.Add(234);
+                output.AddRange(LE(BitConverter.GetBytes(BitConverter.DoubleToUInt64Bits(input))));
+            }
+        }
+
+        public double DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
+            => BitConverter.Int64BitsToDouble((long)DecodeNumber(data, ref offset));
+
+        public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Float64);
     }
 
     private sealed class BytesAdapter : ITypeAdapter<ImmutableBytes>
     {
-        public bool IsDefault(ImmutableBytes input) => input.IsEmpty;
+        public bool IsDefaultInternal(ImmutableBytes input) => input.IsEmpty;
 
         // Dense: standard base64 with = padding.
         // Readable: "hex:" + lowercase hex string.
-        public void ToJson(ImmutableBytes input, string? eolIndent, StringBuilder output)
+        public void ToJsonInternal(ImmutableBytes input, string? eolIndent, StringBuilder output)
         {
             output.Append('"');
             if (eolIndent != null)
@@ -667,7 +690,7 @@ public static class Serializers
             output.Append('"');
         }
 
-        public ImmutableBytes FromJson(JsonElement json, bool keepUnrecognizedValues)
+        public ImmutableBytes FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
         {
             if (json.ValueKind != JsonValueKind.String) return ImmutableBytes.Empty;
             string s = json.GetString()!;
@@ -677,7 +700,7 @@ public static class Serializers
         }
 
         // empty → wire 244; nonempty → wire 245 + encode_uint32(len) + raw bytes.
-        public void Encode(ImmutableBytes input, List<byte> output)
+        public void EncodeInternal(ImmutableBytes input, List<byte> output)
         {
             if (input.IsEmpty)
             {
@@ -691,7 +714,7 @@ public static class Serializers
             }
         }
 
-        public ImmutableBytes Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        public ImmutableBytes DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
         {
             byte wire = ReadU8(data, ref offset);
             if (wire == 0 || wire == 244) return ImmutableBytes.Empty;
@@ -708,11 +731,11 @@ public static class Serializers
 
     private sealed class TimestampAdapter : ITypeAdapter<DateTimeOffset>
     {
-        public bool IsDefault(DateTimeOffset input) => DateTimeOffsetToMillis(input) == 0;
+        public bool IsDefaultInternal(DateTimeOffset input) => DateTimeOffsetToMillis(input) == 0;
 
         // Dense: unix millis as a JSON number.
         // Readable: {"unix_millis": N, "formatted": "<ISO-8601>"} with indentation.
-        public void ToJson(DateTimeOffset input, string? eolIndent, StringBuilder output)
+        public void ToJsonInternal(DateTimeOffset input, string? eolIndent, StringBuilder output)
         {
             long ms = DateTimeOffsetToMillis(input);
             if (eolIndent != null)
@@ -736,7 +759,7 @@ public static class Serializers
             }
         }
 
-        public DateTimeOffset FromJson(JsonElement json, bool keepUnrecognizedValues)
+        public DateTimeOffset FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
         {
             long ms;
             switch (json.ValueKind)
@@ -752,7 +775,7 @@ public static class Serializers
                     break;
                 case JsonValueKind.Object:
                     if (json.TryGetProperty("unix_millis", out JsonElement field))
-                        return FromJson(field, false);
+                        return FromJsonInternal(field, false);
                     ms = 0;
                     break;
                 default:
@@ -763,14 +786,14 @@ public static class Serializers
         }
 
         // ms == 0 → wire 0; else → wire 239 + i64 LE.
-        public void Encode(DateTimeOffset input, List<byte> output)
+        public void EncodeInternal(DateTimeOffset input, List<byte> output)
         {
             long ms = DateTimeOffsetToMillis(input);
             if (ms == 0) { output.Add(0); }
             else { output.Add(239); output.AddRange(LE(BitConverter.GetBytes(ms))); }
         }
 
-        public DateTimeOffset Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+        public DateTimeOffset DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
             MillisToDateTimeOffset(DecodeNumber(data, ref offset));
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Timestamp);
@@ -778,13 +801,13 @@ public static class Serializers
 
     private sealed class StringAdapter : ITypeAdapter<string>
     {
-        public bool IsDefault(string input) => input.Length == 0;
+        public bool IsDefaultInternal(string input) => input.Length == 0;
 
         // Same in both dense and readable modes — always a JSON string.
-        public void ToJson(string input, string? eolIndent, StringBuilder output) =>
+        public void ToJsonInternal(string input, string? eolIndent, StringBuilder output) =>
             WriteJsonString(input, output);
 
-        public string FromJson(JsonElement json, bool keepUnrecognizedValues)
+        public string FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -794,7 +817,7 @@ public static class Serializers
         }
 
         // empty → wire 242; nonempty → wire 243 + encode_uint32(len) + UTF-8 bytes.
-        public void Encode(string input, List<byte> output)
+        public void EncodeInternal(string input, List<byte> output)
         {
             if (input.Length == 0)
             {
@@ -809,7 +832,7 @@ public static class Serializers
             }
         }
 
-        public string Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        public string DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
         {
             byte wire = ReadU8(data, ref offset);
             if (wire == 0 || wire == 242) return "";
@@ -825,135 +848,75 @@ public static class Serializers
 
     // ---- Composite serializers ----
 
-    private sealed class OptionalRefSerializer_<T>(Serializer<T> inner) : Serializer<T?> where T : class
+    private sealed class OptionalRefAdapter_<T>(Serializer<T> inner) : ITypeAdapter<T?> where T : class
     {
-        internal override bool IsDefaultInternal(T? v) => v is null;
+        public bool IsDefaultInternal(T? v) => v is null;
 
-        internal override void ToJsonInternal(T? v, string? eolIndent, StringBuilder sb)
+        public void ToJsonInternal(T? v, string? eolIndent, StringBuilder sb)
         {
             if (v is null) sb.Append("null");
             else inner.ToJsonInternal(v, eolIndent, sb);
         }
 
-        internal override T? FromJsonInternal(JsonElement json, bool keep)
+        public T? FromJsonInternal(JsonElement json, bool keep)
         {
             if (json.ValueKind == JsonValueKind.Null) return null;
             var result = inner.FromJsonInternal(json, keep);
             return inner.IsDefaultInternal(result) ? null : result;
         }
 
-        internal override void EncodeInternal(T? v, List<byte> output)
+        public void EncodeInternal(T? v, List<byte> output)
         {
             if (v is null) output.Add(0);
             else inner.EncodeInternal(v, output);
         }
 
-        internal override T? DecodeInternal(byte[] data, ref int offset, bool keep)
+        public T? DecodeInternal(byte[] data, ref int offset, bool keep)
         {
             var result = inner.DecodeInternal(data, ref offset, keep);
             return inner.IsDefaultInternal(result) ? null : result;
         }
 
-        public override string ToJson(T? value, bool readable = false)
-        {
-            var sb = new StringBuilder();
-            ToJsonInternal(value, readable ? "\n" : null, sb);
-            return sb.ToString();
-        }
-
-        public override byte[] ToBytes(T? value)
-        {
-            var buf = new List<byte> { (byte)'s', (byte)'k', (byte)'i', (byte)'r' };
-            EncodeInternal(value, buf);
-            return [.. buf];
-        }
-
-        public override T? FromJson(string json, bool keepUnrecognizedValues = false)
-        {
-            using var doc = JsonDocument.Parse(json);
-            return FromJsonInternal(doc.RootElement, keepUnrecognizedValues);
-        }
-
-        public override T? FromBytes(byte[] bytes, bool keepUnrecognizedValues = false)
-        {
-            if (bytes.Length >= 4 && bytes[0] == 's' && bytes[1] == 'k' && bytes[2] == 'i' && bytes[3] == 'r')
-            {
-                int o = 4;
-                return DecodeInternal(bytes, ref o, keepUnrecognizedValues);
-            }
-            return FromJson(Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
-        }
-
-        public override TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
+        public TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
     }
 
-    private sealed class OptionalValueSerializer_<T>(Serializer<T> inner) : Serializer<T?> where T : struct
+    private sealed class OptionalValueAdapter_<T>(Serializer<T> inner) : ITypeAdapter<T?> where T : struct
     {
-        internal override bool IsDefaultInternal(T? v) => v is null;
+        public bool IsDefaultInternal(T? v) => v is null;
 
-        internal override void ToJsonInternal(T? v, string? eolIndent, StringBuilder sb)
+        public void ToJsonInternal(T? v, string? eolIndent, StringBuilder sb)
         {
             if (v is null) sb.Append("null");
             else inner.ToJsonInternal(v.Value, eolIndent, sb);
         }
 
-        internal override T? FromJsonInternal(JsonElement json, bool keep)
+        public T? FromJsonInternal(JsonElement json, bool keep)
         {
             if (json.ValueKind == JsonValueKind.Null) return null;
             var result = inner.FromJsonInternal(json, keep);
             return inner.IsDefaultInternal(result) ? null : (T?)result;
         }
 
-        internal override void EncodeInternal(T? v, List<byte> output)
+        public void EncodeInternal(T? v, List<byte> output)
         {
             if (v is null) output.Add(0);
             else inner.EncodeInternal(v.Value, output);
         }
 
-        internal override T? DecodeInternal(byte[] data, ref int offset, bool keep)
+        public T? DecodeInternal(byte[] data, ref int offset, bool keep)
         {
             var result = inner.DecodeInternal(data, ref offset, keep);
             return inner.IsDefaultInternal(result) ? null : (T?)result;
         }
 
-        public override string ToJson(T? value, bool readable = false)
-        {
-            var sb = new StringBuilder();
-            ToJsonInternal(value, readable ? "\n" : null, sb);
-            return sb.ToString();
-        }
-
-        public override byte[] ToBytes(T? value)
-        {
-            var buf = new List<byte> { (byte)'s', (byte)'k', (byte)'i', (byte)'r' };
-            EncodeInternal(value, buf);
-            return [.. buf];
-        }
-
-        public override T? FromJson(string json, bool keepUnrecognizedValues = false)
-        {
-            using var doc = JsonDocument.Parse(json);
-            return FromJsonInternal(doc.RootElement, keepUnrecognizedValues);
-        }
-
-        public override T? FromBytes(byte[] bytes, bool keepUnrecognizedValues = false)
-        {
-            if (bytes.Length >= 4 && bytes[0] == 's' && bytes[1] == 'k' && bytes[2] == 'i' && bytes[3] == 'r')
-            {
-                int o = 4;
-                return DecodeInternal(bytes, ref o, keepUnrecognizedValues);
-            }
-            return FromJson(Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
-        }
-
-        public override TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
+        public TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
     }
 
-    private sealed class ArraySerializer_<T>(Serializer<T> inner) : Serializer<ImmutableList<T>>
+    private sealed class ArrayAdapter_<T>(Serializer<T> inner) : ITypeAdapter<ImmutableList<T>>
     {
-        internal override bool IsDefaultInternal(ImmutableList<T> v) => v.Count == 0;
+        public bool IsDefaultInternal(ImmutableList<T> v) => v.Count == 0;
 
-        internal override void ToJsonInternal(ImmutableList<T> v, string? eolIndent, StringBuilder sb)
+        public void ToJsonInternal(ImmutableList<T> v, string? eolIndent, StringBuilder sb)
         {
             sb.Append('[');
             for (int i = 0; i < v.Count; i++)
@@ -967,7 +930,7 @@ public static class Serializers
             sb.Append(']');
         }
 
-        internal override ImmutableList<T> FromJsonInternal(JsonElement json, bool keep)
+        public ImmutableList<T> FromJsonInternal(JsonElement json, bool keep)
         {
             if (json.ValueKind != JsonValueKind.Array) return ImmutableList<T>.Empty;
             var builder = ImmutableList.CreateBuilder<T>();
@@ -975,7 +938,7 @@ public static class Serializers
             return builder.ToImmutable();
         }
 
-        internal override void EncodeInternal(ImmutableList<T> v, List<byte> output)
+        public void EncodeInternal(ImmutableList<T> v, List<byte> output)
         {
             int n = v.Count;
             if (n == 0) { output.Add(246); return; }
@@ -984,7 +947,7 @@ public static class Serializers
             foreach (var item in v) inner.EncodeInternal(item, output);
         }
 
-        internal override ImmutableList<T> DecodeInternal(byte[] data, ref int offset, bool keep)
+        public ImmutableList<T> DecodeInternal(byte[] data, ref int offset, bool keep)
         {
             if (offset >= data.Length) return ImmutableList<T>.Empty;
             byte wire = ReadU8(data, ref offset);
@@ -996,37 +959,7 @@ public static class Serializers
             return builder.ToImmutable();
         }
 
-        public override string ToJson(ImmutableList<T> value, bool readable = false)
-        {
-            var sb = new StringBuilder();
-            ToJsonInternal(value, readable ? "\n" : null, sb);
-            return sb.ToString();
-        }
-
-        public override byte[] ToBytes(ImmutableList<T> value)
-        {
-            var buf = new List<byte> { (byte)'s', (byte)'k', (byte)'i', (byte)'r' };
-            EncodeInternal(value, buf);
-            return [.. buf];
-        }
-
-        public override ImmutableList<T> FromJson(string json, bool keepUnrecognizedValues = false)
-        {
-            using var doc = JsonDocument.Parse(json);
-            return FromJsonInternal(doc.RootElement, keepUnrecognizedValues);
-        }
-
-        public override ImmutableList<T> FromBytes(byte[] bytes, bool keepUnrecognizedValues = false)
-        {
-            if (bytes.Length >= 4 && bytes[0] == 's' && bytes[1] == 'k' && bytes[2] == 'i' && bytes[3] == 'r')
-            {
-                int o = 4;
-                return DecodeInternal(bytes, ref o, keepUnrecognizedValues);
-            }
-            return FromJson(Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
-        }
-
-        public override TypeDescriptor TypeDescriptor { get; } = new ArrayDescriptor(inner.TypeDescriptor);
+        public TypeDescriptor TypeDescriptor { get; } = new ArrayDescriptor(inner.TypeDescriptor);
     }
 }
 

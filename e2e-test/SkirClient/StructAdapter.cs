@@ -14,7 +14,7 @@ namespace SkirClient;
 /// <see cref="Finalize_"/> exactly once.
 /// </para>
 /// </summary>
-public sealed class StructAdapter<T> : Serializer<T> where T : struct
+public sealed class StructAdapter<T> : ITypeAdapter<T> where T : struct
 {
     // ---- per-field type-erased interface ------------------------------------
 
@@ -108,60 +108,25 @@ public sealed class StructAdapter<T> : Serializer<T> where T : struct
         _descriptor.SetRemovedNumbers(_removedNumbers);
     }
 
-    // ---- Serializer<T> public API ------------------------------------------
+    public TypeDescriptor TypeDescriptor => _descriptor;
 
-    public override string ToJson(T value, bool readable = false)
-    {
-        var sb = new StringBuilder();
-        ToJsonImpl(value, readable ? "\n" : null, sb);
-        return sb.ToString();
-    }
-
-    public override byte[] ToBytes(T value)
-    {
-        var buf = new List<byte>(8) { (byte)'s', (byte)'k', (byte)'i', (byte)'r' };
-        EncodeImpl(value, buf);
-        return [.. buf];
-    }
-
-    public override T FromJson(string json, bool keepUnrecognizedValues = false)
-    {
-        using var doc = JsonDocument.Parse(json);
-        return FromJsonImpl(doc.RootElement, keepUnrecognizedValues);
-    }
-
-    public override T FromBytes(byte[] bytes, bool keepUnrecognizedValues = false)
-    {
-        if (bytes.Length >= 4 &&
-            bytes[0] == 's' && bytes[1] == 'k' && bytes[2] == 'i' && bytes[3] == 'r')
-        {
-            int offset = 4;
-            return DecodeImpl(bytes, ref offset, keepUnrecognizedValues);
-        }
-        return FromJson(Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
-    }
-
-    public override TypeDescriptor TypeDescriptor => _descriptor;
-
-    // ---- internal virtuals -------------------------------------------------
-
-    internal override bool IsDefaultInternal(T value)
+    public bool IsDefaultInternal(T value)
     {
         foreach (var f in _orderedFields)
             if (!f.IsDefault(value)) return false;
         return true;
     }
 
-    internal override void ToJsonInternal(T value, string? eolIndent, StringBuilder output) =>
+    public void ToJsonInternal(T value, string? eolIndent, StringBuilder output) =>
         ToJsonImpl(value, eolIndent, output);
 
-    internal override T FromJsonInternal(JsonElement json, bool keepUnrecognized) =>
+    public T FromJsonInternal(JsonElement json, bool keepUnrecognized) =>
         FromJsonImpl(json, keepUnrecognized);
 
-    internal override void EncodeInternal(T value, List<byte> output) =>
+    public void EncodeInternal(T value, List<byte> output) =>
         EncodeImpl(value, output);
 
-    internal override T DecodeInternal(byte[] data, ref int offset, bool keepUnrecognized) =>
+    public T DecodeInternal(byte[] data, ref int offset, bool keepUnrecognized) =>
         DecodeImpl(data, ref offset, keepUnrecognized);
 
     // ---- JSON impl ---------------------------------------------------------

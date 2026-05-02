@@ -183,6 +183,9 @@ class CsharpSourceFileGenerator {
     this.lines.push(
       `${bodyIndent}    new(${name}.DEFAULT, ${JSON.stringify(modulePath)}, ${JSON.stringify(qualifiedName)});`,
     );
+    this.lines.push(
+      `${bodyIndent}internal static readonly global::SkirClient.Serializer<${fqName}> _adapterSerializer = new(_adapter);`,
+    );
     this.lines.push("");
 
     // Serializer property.
@@ -190,7 +193,7 @@ class CsharpSourceFileGenerator {
       `${bodyIndent}public static global::SkirClient.Serializer<${fqName}> Serializer`,
     );
     this.lines.push(
-      `${bodyIndent}{ get { ModuleInit_.EnsureInit(); return _adapter; } }`,
+      `${bodyIndent}{ get { ModuleInit_.EnsureInit(); return _adapterSerializer; } }`,
     );
     this.lines.push("");
 
@@ -249,6 +252,7 @@ class CsharpSourceFileGenerator {
       "Serializer",
       "InitAdapter_",
       "_adapter",
+      "_adapterSerializer",
       name,
     ]);
 
@@ -318,6 +322,9 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${body2Indent}${name}.DEFAULT,`);
     this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
     this.lines.push(`${body2Indent}${JSON.stringify(qualifiedName)});`);
+    this.lines.push(
+      `${bodyIndent}internal static readonly global::SkirClient.Serializer<${fqBase}> _adapterSerializer = new(_adapter);`,
+    );
     this.lines.push("");
 
     // Serializer property.
@@ -325,7 +332,7 @@ class CsharpSourceFileGenerator {
       `${bodyIndent}public static global::SkirClient.Serializer<${fqBase}> Serializer`,
     );
     this.lines.push(
-      `${bodyIndent}{ get { ModuleInit_.EnsureInit(); return _adapter; } }`,
+      `${bodyIndent}{ get { ModuleInit_.EnsureInit(); return _adapterSerializer; } }`,
     );
     this.lines.push("");
 
@@ -380,6 +387,7 @@ class CsharpSourceFileGenerator {
       "Serializer",
       "InitAdapter_",
       "_adapter",
+      "_adapterSerializer",
       "_unrecognized",
     ]);
     for (const field of record.record.fields) {
