@@ -38,15 +38,15 @@ public sealed class StructAdapter<T> : ITypeAdapter<T> where T : struct
         public string Name => name;
         public int Number => number;
         public TypeDescriptor FieldType => ser.TypeDescriptor;
-        public bool IsDefault(T v) => ser.IsDefaultInternal(getter(v));
+        public bool IsDefault(T v) => ser.IsDefault(getter(v));
         public void ToJson(T v, string? eolIndent, StringBuilder sb) =>
-            ser.ToJsonInternal(getter(v), eolIndent, sb);
+            ser.ToJson(getter(v), eolIndent, sb);
         public T SetFromJson(T v, JsonElement json, bool keep) =>
-            setter(v, ser.FromJsonInternal(json, keep));
+            setter(v, ser.FromJson(json, keep));
         public void Encode(T v, List<byte> output) =>
-            ser.EncodeInternal(getter(v), output);
+            ser.Encode(getter(v), output);
         public T SetFromBytes(T v, byte[] data, ref int offset, bool keep) =>
-            setter(v, ser.DecodeInternal(data, ref offset, keep));
+            setter(v, ser.Decode(data, ref offset, keep));
     }
 
     // ---- state -------------------------------------------------------------
@@ -111,23 +111,23 @@ public sealed class StructAdapter<T> : ITypeAdapter<T> where T : struct
 
     public TypeDescriptor TypeDescriptor => _descriptor;
 
-    public bool IsDefaultInternal(T value)
+    public bool IsDefault(T value)
     {
         foreach (var f in _orderedFields)
             if (!f.IsDefault(value)) return false;
         return true;
     }
 
-    public void ToJsonInternal(T value, string? eolIndent, StringBuilder output) =>
+    public void ToJson(T value, string? eolIndent, StringBuilder output) =>
         ToJsonImpl(value, eolIndent, output);
 
-    public T FromJsonInternal(JsonElement json, bool keepUnrecognized) =>
+    public T FromJson(JsonElement json, bool keepUnrecognized) =>
         FromJsonImpl(json, keepUnrecognized);
 
-    public void EncodeInternal(T value, List<byte> output) =>
+    public void Encode(T value, List<byte> output) =>
         EncodeImpl(value, output);
 
-    public T DecodeInternal(byte[] data, ref int offset, bool keepUnrecognized) =>
+    public T Decode(byte[] data, ref int offset, bool keepUnrecognized) =>
         DecodeImpl(data, ref offset, keepUnrecognized);
 
     // ---- JSON impl ---------------------------------------------------------

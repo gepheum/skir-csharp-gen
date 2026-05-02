@@ -42,9 +42,9 @@ public static class Serializers
 
     private sealed class BoolAdapter : ITypeAdapter<bool>
     {
-        public bool IsDefaultInternal(bool input) => !input;
+        public bool IsDefault(bool input) => !input;
 
-        public void ToJsonInternal(bool input, string? eolIndent, StringBuilder output)
+        public void ToJson(bool input, string? eolIndent, StringBuilder output)
         {
             if (eolIndent != null)
                 output.Append(input ? "true" : "false");
@@ -52,7 +52,7 @@ public static class Serializers
                 output.Append(input ? '1' : '0');
         }
 
-        public bool FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        public bool FromJson(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -65,10 +65,10 @@ public static class Serializers
             };
         }
 
-        public void EncodeInternal(bool input, List<byte> output) =>
+        public void Encode(bool input, List<byte> output) =>
             output.Add(input ? (byte)1 : (byte)0);
 
-        public bool DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        public bool Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
         {
             if (offset >= data.Length)
                 throw new InvalidOperationException("Unexpected end of input");
@@ -321,13 +321,13 @@ public static class Serializers
 
     private sealed class Int32Adapter : ITypeAdapter<int>
     {
-        public bool IsDefaultInternal(int input) => input == 0;
+        public bool IsDefault(int input) => input == 0;
 
         // Same in both dense and readable modes — always a JSON number.
-        public void ToJsonInternal(int input, string? eolIndent, StringBuilder output) =>
+        public void ToJson(int input, string? eolIndent, StringBuilder output) =>
             output.Append(input);
 
-        public int FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        public int FromJson(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -342,9 +342,9 @@ public static class Serializers
             };
         }
 
-        public void EncodeInternal(int input, List<byte> output) => EncodeI32(input, output);
+        public void Encode(int input, List<byte> output) => EncodeI32(input, output);
 
-        public int DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+        public int Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
             (int)DecodeNumber(data, ref offset);
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Int32);
@@ -356,9 +356,9 @@ public static class Serializers
 
     private sealed class Int64Adapter : ITypeAdapter<long>
     {
-        public bool IsDefaultInternal(long input) => input == 0;
+        public bool IsDefault(long input) => input == 0;
 
-        public void ToJsonInternal(long input, string? eolIndent, StringBuilder output)
+        public void ToJson(long input, string? eolIndent, StringBuilder output)
         {
             if (input >= -MaxSafeInt64Json && input <= MaxSafeInt64Json)
                 output.Append(input);
@@ -370,7 +370,7 @@ public static class Serializers
             }
         }
 
-        public long FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        public long FromJson(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -382,7 +382,7 @@ public static class Serializers
             };
         }
 
-        public void EncodeInternal(long input, List<byte> output)
+        public void Encode(long input, List<byte> output)
         {
             if (input >= int.MinValue && input <= int.MaxValue)
                 EncodeI32((int)input, output);
@@ -393,7 +393,7 @@ public static class Serializers
             }
         }
 
-        public long DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+        public long Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
             DecodeNumber(data, ref offset);
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Int64);
@@ -403,9 +403,9 @@ public static class Serializers
 
     private sealed class Hash64Adapter : ITypeAdapter<ulong>
     {
-        public bool IsDefaultInternal(ulong input) => input == 0;
+        public bool IsDefault(ulong input) => input == 0;
 
-        public void ToJsonInternal(ulong input, string? eolIndent, StringBuilder output)
+        public void ToJson(ulong input, string? eolIndent, StringBuilder output)
         {
             if (input <= MaxSafeHash64Json)
                 output.Append(input);
@@ -417,7 +417,7 @@ public static class Serializers
             }
         }
 
-        public ulong FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        public ulong FromJson(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -430,7 +430,7 @@ public static class Serializers
             };
         }
 
-        public void EncodeInternal(ulong input, List<byte> output)
+        public void Encode(ulong input, List<byte> output)
         {
             if (input <= 231) { output.Add((byte)input); }
             else if (input <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)input))); }
@@ -438,7 +438,7 @@ public static class Serializers
             else { output.Add(234); output.AddRange(LE(BitConverter.GetBytes(input))); }
         }
 
-        public ulong DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+        public ulong Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
             (ulong)DecodeNumber(data, ref offset);
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Hash64);
@@ -449,12 +449,12 @@ public static class Serializers
 
     private sealed class Float32Adapter : ITypeAdapter<float>
     {
-        public bool IsDefaultInternal(float input) => input == 0f;
+        public bool IsDefault(float input) => input == 0f;
 
-        public void ToJsonInternal(float input, string? eolIndent, StringBuilder output) =>
+        public void ToJson(float input, string? eolIndent, StringBuilder output) =>
             output.Append(input.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
 
-        public float FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        public float FromJson(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -468,7 +468,7 @@ public static class Serializers
             };
         }
 
-        public void EncodeInternal(float input, List<byte> output)
+        public void Encode(float input, List<byte> output)
         {
             if (input == 0f)
             {
@@ -481,7 +481,7 @@ public static class Serializers
             }
         }
 
-        public float DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        public float Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
             => BitConverter.UInt32BitsToSingle((uint)DecodeNumber(data, ref offset));
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Float32);
@@ -489,12 +489,12 @@ public static class Serializers
 
     private sealed class Float64Adapter : ITypeAdapter<double>
     {
-        public bool IsDefaultInternal(double input) => input == 0d;
+        public bool IsDefault(double input) => input == 0d;
 
-        public void ToJsonInternal(double input, string? eolIndent, StringBuilder output) =>
+        public void ToJson(double input, string? eolIndent, StringBuilder output) =>
             output.Append(input.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
 
-        public double FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        public double FromJson(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -507,7 +507,7 @@ public static class Serializers
             };
         }
 
-        public void EncodeInternal(double input, List<byte> output)
+        public void Encode(double input, List<byte> output)
         {
             if (input == 0d)
             {
@@ -520,7 +520,7 @@ public static class Serializers
             }
         }
 
-        public double DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        public double Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
             => BitConverter.Int64BitsToDouble((long)DecodeNumber(data, ref offset));
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Float64);
@@ -528,11 +528,11 @@ public static class Serializers
 
     private sealed class BytesAdapter : ITypeAdapter<ImmutableBytes>
     {
-        public bool IsDefaultInternal(ImmutableBytes input) => input.IsEmpty;
+        public bool IsDefault(ImmutableBytes input) => input.IsEmpty;
 
         // Dense: standard base64 with = padding.
         // Readable: "hex:" + lowercase hex string.
-        public void ToJsonInternal(ImmutableBytes input, string? eolIndent, StringBuilder output)
+        public void ToJson(ImmutableBytes input, string? eolIndent, StringBuilder output)
         {
             output.Append('"');
             if (eolIndent != null)
@@ -547,7 +547,7 @@ public static class Serializers
             output.Append('"');
         }
 
-        public ImmutableBytes FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        public ImmutableBytes FromJson(JsonElement json, bool keepUnrecognizedValues)
         {
             if (json.ValueKind != JsonValueKind.String) return ImmutableBytes.Empty;
             string s = json.GetString()!;
@@ -557,7 +557,7 @@ public static class Serializers
         }
 
         // empty → wire 244; nonempty → wire 245 + encode_uint32(len) + raw bytes.
-        public void EncodeInternal(ImmutableBytes input, List<byte> output)
+        public void Encode(ImmutableBytes input, List<byte> output)
         {
             if (input.IsEmpty)
             {
@@ -571,7 +571,7 @@ public static class Serializers
             }
         }
 
-        public ImmutableBytes DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        public ImmutableBytes Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
         {
             byte wire = ReadU8(data, ref offset);
             if (wire == 0 || wire == 244) return ImmutableBytes.Empty;
@@ -588,11 +588,11 @@ public static class Serializers
 
     private sealed class TimestampAdapter : ITypeAdapter<DateTimeOffset>
     {
-        public bool IsDefaultInternal(DateTimeOffset input) => DateTimeOffsetToMillis(input) == 0;
+        public bool IsDefault(DateTimeOffset input) => DateTimeOffsetToMillis(input) == 0;
 
         // Dense: unix millis as a JSON number.
         // Readable: {"unix_millis": N, "formatted": "<ISO-8601>"} with indentation.
-        public void ToJsonInternal(DateTimeOffset input, string? eolIndent, StringBuilder output)
+        public void ToJson(DateTimeOffset input, string? eolIndent, StringBuilder output)
         {
             long ms = DateTimeOffsetToMillis(input);
             if (eolIndent != null)
@@ -616,7 +616,7 @@ public static class Serializers
             }
         }
 
-        public DateTimeOffset FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        public DateTimeOffset FromJson(JsonElement json, bool keepUnrecognizedValues)
         {
             long ms;
             switch (json.ValueKind)
@@ -632,7 +632,7 @@ public static class Serializers
                     break;
                 case JsonValueKind.Object:
                     if (json.TryGetProperty("unix_millis", out JsonElement field))
-                        return FromJsonInternal(field, false);
+                        return FromJson(field, false);
                     ms = 0;
                     break;
                 default:
@@ -643,14 +643,14 @@ public static class Serializers
         }
 
         // ms == 0 → wire 0; else → wire 239 + i64 LE.
-        public void EncodeInternal(DateTimeOffset input, List<byte> output)
+        public void Encode(DateTimeOffset input, List<byte> output)
         {
             long ms = DateTimeOffsetToMillis(input);
             if (ms == 0) { output.Add(0); }
             else { output.Add(239); output.AddRange(LE(BitConverter.GetBytes(ms))); }
         }
 
-        public DateTimeOffset DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+        public DateTimeOffset Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
             MillisToDateTimeOffset(DecodeNumber(data, ref offset));
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Timestamp);
@@ -658,13 +658,13 @@ public static class Serializers
 
     private sealed class StringAdapter : ITypeAdapter<string>
     {
-        public bool IsDefaultInternal(string input) => input.Length == 0;
+        public bool IsDefault(string input) => input.Length == 0;
 
         // Same in both dense and readable modes — always a JSON string.
-        public void ToJsonInternal(string input, string? eolIndent, StringBuilder output) =>
+        public void ToJson(string input, string? eolIndent, StringBuilder output) =>
             WriteJsonString(input, output);
 
-        public string FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
+        public string FromJson(JsonElement json, bool keepUnrecognizedValues)
         {
             return json.ValueKind switch
             {
@@ -674,7 +674,7 @@ public static class Serializers
         }
 
         // empty → wire 242; nonempty → wire 243 + encode_uint32(len) + UTF-8 bytes.
-        public void EncodeInternal(string input, List<byte> output)
+        public void Encode(string input, List<byte> output)
         {
             if (input.Length == 0)
             {
@@ -689,7 +689,7 @@ public static class Serializers
             }
         }
 
-        public string DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        public string Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
         {
             byte wire = ReadU8(data, ref offset);
             if (wire == 0 || wire == 242) return "";
@@ -707,31 +707,31 @@ public static class Serializers
 
     private sealed class OptionalRefAdapter_<T>(Serializer<T> inner) : ITypeAdapter<T?> where T : class
     {
-        public bool IsDefaultInternal(T? v) => v is null;
+        public bool IsDefault(T? v) => v is null;
 
-        public void ToJsonInternal(T? v, string? eolIndent, StringBuilder sb)
+        public void ToJson(T? v, string? eolIndent, StringBuilder sb)
         {
             if (v is null) sb.Append("null");
-            else inner.ToJsonInternal(v, eolIndent, sb);
+            else inner.ToJson(v, eolIndent, sb);
         }
 
-        public T? FromJsonInternal(JsonElement json, bool keep)
+        public T? FromJson(JsonElement json, bool keep)
         {
             if (json.ValueKind == JsonValueKind.Null) return null;
-            var result = inner.FromJsonInternal(json, keep);
-            return inner.IsDefaultInternal(result) ? null : result;
+            var result = inner.FromJson(json, keep);
+            return inner.IsDefault(result) ? null : result;
         }
 
-        public void EncodeInternal(T? v, List<byte> output)
+        public void Encode(T? v, List<byte> output)
         {
             if (v is null) output.Add(0);
-            else inner.EncodeInternal(v, output);
+            else inner.Encode(v, output);
         }
 
-        public T? DecodeInternal(byte[] data, ref int offset, bool keep)
+        public T? Decode(byte[] data, ref int offset, bool keep)
         {
-            var result = inner.DecodeInternal(data, ref offset, keep);
-            return inner.IsDefaultInternal(result) ? null : result;
+            var result = inner.Decode(data, ref offset, keep);
+            return inner.IsDefault(result) ? null : result;
         }
 
         public TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
@@ -739,31 +739,31 @@ public static class Serializers
 
     private sealed class OptionalValueAdapter_<T>(Serializer<T> inner) : ITypeAdapter<T?> where T : struct
     {
-        public bool IsDefaultInternal(T? v) => v is null;
+        public bool IsDefault(T? v) => v is null;
 
-        public void ToJsonInternal(T? v, string? eolIndent, StringBuilder sb)
+        public void ToJson(T? v, string? eolIndent, StringBuilder sb)
         {
             if (v is null) sb.Append("null");
-            else inner.ToJsonInternal(v.Value, eolIndent, sb);
+            else inner.ToJson(v.Value, eolIndent, sb);
         }
 
-        public T? FromJsonInternal(JsonElement json, bool keep)
+        public T? FromJson(JsonElement json, bool keep)
         {
             if (json.ValueKind == JsonValueKind.Null) return null;
-            var result = inner.FromJsonInternal(json, keep);
-            return inner.IsDefaultInternal(result) ? null : (T?)result;
+            var result = inner.FromJson(json, keep);
+            return inner.IsDefault(result) ? null : (T?)result;
         }
 
-        public void EncodeInternal(T? v, List<byte> output)
+        public void Encode(T? v, List<byte> output)
         {
             if (v is null) output.Add(0);
-            else inner.EncodeInternal(v.Value, output);
+            else inner.Encode(v.Value, output);
         }
 
-        public T? DecodeInternal(byte[] data, ref int offset, bool keep)
+        public T? Decode(byte[] data, ref int offset, bool keep)
         {
-            var result = inner.DecodeInternal(data, ref offset, keep);
-            return inner.IsDefaultInternal(result) ? null : (T?)result;
+            var result = inner.Decode(data, ref offset, keep);
+            return inner.IsDefault(result) ? null : (T?)result;
         }
 
         public TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
@@ -771,9 +771,9 @@ public static class Serializers
 
     private sealed class ArrayAdapter_<T>(Serializer<T> inner) : ITypeAdapter<ImmutableList<T>>
     {
-        public bool IsDefaultInternal(ImmutableList<T> v) => v.Count == 0;
+        public bool IsDefault(ImmutableList<T> v) => v.Count == 0;
 
-        public void ToJsonInternal(ImmutableList<T> v, string? eolIndent, StringBuilder sb)
+        public void ToJson(ImmutableList<T> v, string? eolIndent, StringBuilder sb)
         {
             sb.Append('[');
             for (int i = 0; i < v.Count; i++)
@@ -781,30 +781,30 @@ public static class Serializers
                 if (i > 0) sb.Append(',');
                 string? childIndent = eolIndent != null ? eolIndent + "  " : null;
                 if (childIndent != null) sb.Append(childIndent);
-                inner.ToJsonInternal(v[i], childIndent, sb);
+                inner.ToJson(v[i], childIndent, sb);
             }
             if (eolIndent != null && v.Count > 0) sb.Append(eolIndent);
             sb.Append(']');
         }
 
-        public ImmutableList<T> FromJsonInternal(JsonElement json, bool keep)
+        public ImmutableList<T> FromJson(JsonElement json, bool keep)
         {
             if (json.ValueKind != JsonValueKind.Array) return ImmutableList<T>.Empty;
             var builder = ImmutableList.CreateBuilder<T>();
-            foreach (var item in json.EnumerateArray()) builder.Add(inner.FromJsonInternal(item, keep));
+            foreach (var item in json.EnumerateArray()) builder.Add(inner.FromJson(item, keep));
             return builder.ToImmutable();
         }
 
-        public void EncodeInternal(ImmutableList<T> v, List<byte> output)
+        public void Encode(ImmutableList<T> v, List<byte> output)
         {
             int n = v.Count;
             if (n == 0) { output.Add(246); return; }
             if (n <= 3) output.Add((byte)(246 + n));
             else { output.Add(250); EncodeUint32((uint)n, output); }
-            foreach (var item in v) inner.EncodeInternal(item, output);
+            foreach (var item in v) inner.Encode(item, output);
         }
 
-        public ImmutableList<T> DecodeInternal(byte[] data, ref int offset, bool keep)
+        public ImmutableList<T> Decode(byte[] data, ref int offset, bool keep)
         {
             if (offset >= data.Length) return ImmutableList<T>.Empty;
             byte wire = ReadU8(data, ref offset);
@@ -812,7 +812,7 @@ public static class Serializers
 
             int count = wire == 250 ? (int)DecodeNumber(data, ref offset) : wire - 246;
             var builder = ImmutableList.CreateBuilder<T>();
-            for (int i = 0; i < count; i++) builder.Add(inner.DecodeInternal(data, ref offset, keep));
+            for (int i = 0; i < count; i++) builder.Add(inner.Decode(data, ref offset, keep));
             return builder.ToImmutable();
         }
 

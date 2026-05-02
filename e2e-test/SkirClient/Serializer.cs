@@ -35,7 +35,7 @@ public sealed class Serializer<T>
     public string ToJson(T value, bool readable = false)
     {
         var sb = new StringBuilder();
-        _adapter.ToJsonInternal(value, readable ? "\n" : null, sb);
+        _adapter.ToJson(value, readable ? "\n" : null, sb);
         return sb.ToString();
     }
 
@@ -47,7 +47,7 @@ public sealed class Serializer<T>
         output.Add((byte)'k');
         output.Add((byte)'i');
         output.Add((byte)'r');
-        _adapter.EncodeInternal(value, output);
+        _adapter.Encode(value, output);
         return output.ToArray();
     }
 
@@ -62,7 +62,7 @@ public sealed class Serializer<T>
     public T FromJson(string json, bool keepUnrecognizedValues = false)
     {
         using var doc = JsonDocument.Parse(json);
-        return _adapter.FromJsonInternal(doc.RootElement, keepUnrecognizedValues);
+        return _adapter.FromJson(doc.RootElement, keepUnrecognizedValues);
     }
 
     /// <summary>
@@ -77,27 +77,27 @@ public sealed class Serializer<T>
             bytes[2] == 'i' && bytes[3] == 'r')
         {
             int offset = 4;
-            return _adapter.DecodeInternal(bytes, ref offset, keepUnrecognizedValues);
+            return _adapter.Decode(bytes, ref offset, keepUnrecognizedValues);
         }
         // No magic prefix - treat payload as UTF-8 JSON.
         return FromJson(System.Text.Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
     }
 
     // Internal fast-path hooks used by generated adapters.
-    internal bool IsDefaultInternal(T value)
-        => _adapter.IsDefaultInternal(value);
+    internal bool IsDefault(T value)
+        => _adapter.IsDefault(value);
 
-    internal void ToJsonInternal(T value, string? eolIndent, StringBuilder output)
-        => _adapter.ToJsonInternal(value, eolIndent, output);
+    internal void ToJson(T value, string? eolIndent, StringBuilder output)
+        => _adapter.ToJson(value, eolIndent, output);
 
-    internal T FromJsonInternal(JsonElement json, bool keepUnrecognizedValues)
-        => _adapter.FromJsonInternal(json, keepUnrecognizedValues);
+    internal T FromJson(JsonElement json, bool keepUnrecognizedValues)
+        => _adapter.FromJson(json, keepUnrecognizedValues);
 
-    internal void EncodeInternal(T value, List<byte> output)
-        => _adapter.EncodeInternal(value, output);
+    internal void Encode(T value, List<byte> output)
+        => _adapter.Encode(value, output);
 
-    internal T DecodeInternal(byte[] data, ref int offset, bool keepUnrecognizedValues)
-        => _adapter.DecodeInternal(data, ref offset, keepUnrecognizedValues);
+    internal T Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        => _adapter.Decode(data, ref offset, keepUnrecognizedValues);
 
     /// <summary>Reflection descriptor for this type's schema.</summary>
     public TypeDescriptor TypeDescriptor => _adapter.TypeDescriptor;

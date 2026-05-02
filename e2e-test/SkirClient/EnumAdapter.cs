@@ -79,7 +79,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
                 sb.Append(',');
                 sb.Append(childIndent);
                 sb.Append("\"value\": ");
-                ser.ToJsonInternal(payload, childIndent, sb);
+                ser.ToJson(payload, childIndent, sb);
                 sb.Append(eolIndent);
                 sb.Append('}');
             }
@@ -88,7 +88,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
                 sb.Append('[');
                 sb.Append(number);
                 sb.Append(',');
-                ser.ToJsonInternal(payload, null, sb);
+                ser.ToJson(payload, null, sb);
                 sb.Append(']');
             }
         }
@@ -104,14 +104,14 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
                 Serializers.EncodeUint32_((uint)number, output);
             }
             // Write payload
-            ser.EncodeInternal(getValue(value), output);
+            ser.Encode(getValue(value), output);
         }
 
         public T WrapFromJson(JsonElement json, bool keep) =>
-            wrap(ser.FromJsonInternal(json, keep));
+            wrap(ser.FromJson(json, keep));
 
         public T DecodeWrap(byte[] data, ref int offset, bool keep) =>
-            wrap(ser.DecodeInternal(data, ref offset, keep));
+            wrap(ser.Decode(data, ref offset, keep));
     }
 
     // ---- entry lookup bookkeeping ------------------------------------------
@@ -206,18 +206,18 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
 
     public TypeDescriptor TypeDescriptor => _descriptor;
 
-    public bool IsDefaultInternal(T value) => _getKindOrdinal(value) == 0;
+    public bool IsDefault(T value) => _getKindOrdinal(value) == 0;
 
-    public void ToJsonInternal(T value, string? eolIndent, StringBuilder output) =>
+    public void ToJson(T value, string? eolIndent, StringBuilder output) =>
         ToJsonImpl(value, eolIndent, output);
 
-    public T FromJsonInternal(JsonElement json, bool keepUnrecognized) =>
+    public T FromJson(JsonElement json, bool keepUnrecognized) =>
         FromJsonImpl(json, keepUnrecognized);
 
-    public void EncodeInternal(T value, List<byte> output) =>
+    public void Encode(T value, List<byte> output) =>
         EncodeImpl(value, output);
 
-    public T DecodeInternal(byte[] data, ref int offset, bool keepUnrecognized) =>
+    public T Decode(byte[] data, ref int offset, bool keepUnrecognized) =>
         DecodeImpl(data, ref offset, keepUnrecognized);
 
     // ---- JSON impl ---------------------------------------------------------
