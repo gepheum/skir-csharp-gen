@@ -145,8 +145,9 @@ class CsharpSourceFileGenerator {
     // Pre-compute property names to reuse in both field declarations and InitAdapter_.
     const fieldInfos = this.computeFieldInfos(record, name);
 
-    // Collect field initializers for the DEFAULT static property.
-    const requiredInits: string[] = [];
+    // Collect field info for DEFAULT init, Builder_, and the build lambda.
+    const fieldDefaults: Array<{ propertyName: string; defaultExpr: string }> =
+      [];
 
     for (const { field, propertyName } of fieldInfos) {
       const fieldType = this.typeSpeller.getCsharpFieldType(field);
@@ -155,7 +156,7 @@ class CsharpSourceFileGenerator {
       this.lines.push(
         `${bodyIndent}public required ${fieldType} ${propertyName} { get; init; }`,
       );
-      requiredInits.push(`${propertyName} = ${defaultExpr}`);
+      fieldDefaults.push({ propertyName, defaultExpr });
     }
 
     if (fieldInfos.length > 0) {
@@ -169,21 +170,43 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${bodyIndent}#pragma warning restore CS0169`);
 
     const defaultInit =
-      requiredInits.length > 0
-        ? `new() { ${requiredInits.join(", ")} }`
+      fieldDefaults.length > 0
+        ? `new() { ${fieldDefaults.map((f) => `${f.propertyName} = ${f.defaultExpr}`).join(", ")} }`
         : "new()";
     this.lines.push(
       `${bodyIndent}public static readonly ${name} DEFAULT = ${defaultInit};`,
     );
     this.lines.push("");
 
+    // Nested builder class.
+    this.lines.push(`${bodyIndent}private sealed class Builder_`);
+    this.lines.push(`${bodyIndent}{`);
+    for (const { field, propertyName } of fieldInfos) {
+      const fieldType = this.typeSpeller.getCsharpFieldType(field);
+      const defaultExpr = this.typeSpeller.getFieldDefaultExpr(field);
+      this.lines.push(
+        `${body2Indent}public ${fieldType} ${propertyName} { get; set; } = ${defaultExpr};`,
+      );
+    }
+    this.lines.push(`${bodyIndent}}`);
+    this.lines.push("");
+
     // Adapter field.
+    const newBuilderLambda = "() => new Builder_()";
+    const buildFields = fieldDefaults
+      .map((f) => `${f.propertyName} = b.${f.propertyName}`)
+      .join(", ");
+    const buildLambda = buildFields
+      ? `b => new ${name} { ${buildFields} }`
+      : `b => new ${name}()`;
     this.lines.push(
-      `${bodyIndent}internal static readonly global::SkirClient.StructAdapter<${fqName}> _adapter =`,
+      `${bodyIndent}private static readonly global::SkirClient.StructAdapter<${fqName}, Builder_> _adapter =`,
     );
     this.lines.push(
-      `${bodyIndent}    new(${name}.DEFAULT, ${JSON.stringify(modulePath)}, ${JSON.stringify(qualifiedName)});`,
+      `${bodyIndent}    new(${name}.DEFAULT, ${JSON.stringify(modulePath)}, ${JSON.stringify(qualifiedName)},`,
     );
+    this.lines.push(`${bodyIndent}        ${newBuilderLambda},`);
+    this.lines.push(`${bodyIndent}        ${buildLambda});`);
     this.lines.push(
       `${bodyIndent}internal static readonly global::SkirClient.Serializer<${fqName}> _adapterSerializer = new(_adapter);`,
     );
@@ -426,14 +449,14 @@ class CsharpSourceFileGenerator {
     return `x => x.${propertyName}`;
   }
 
-  /** Returns a lambda expression `(x, v) => …` that sets the field value,
-   *  wrapping in Recursive<T> if needed. */
+  /** Returns a lambda expression `(b, v) => …` that sets the field value on
+   *  the builder, wrapping in Recursive<T> if needed. */
   private makeStructFieldSetter(field: Field, propertyName: string): string {
     if (field.isRecursive === "hard") {
       const innerType = this.typeSpeller.getCsharpType(field.type!);
       return (
-        `(x, v) => x with { ${propertyName} = ` +
-        `global::SkirClient.Recursive<${innerType}>.FromValue(v) }`
+        `(b, v) => b.${propertyName} = ` +
+        `global::SkirClient.Recursive<${innerType}>.FromValue(v)`
       );
     }
     if (field.isRecursive === "via-optional") {
@@ -442,12 +465,12 @@ class CsharpSourceFileGenerator {
       }
       const innerType = this.typeSpeller.getCsharpType(field.type!.other);
       return (
-        `(x, v) => x with { ${propertyName} = v == null ` +
+        `(b, v) => b.${propertyName} = v == null ` +
         `? (global::SkirClient.Recursive<${innerType}>?)null ` +
-        `: global::SkirClient.Recursive<${innerType}>.FromValue(v.GetValueOrDefault()) }`
+        `: global::SkirClient.Recursive<${innerType}>.FromValue(v.GetValueOrDefault())`
       );
     }
-    return `(x, v) => x with { ${propertyName} = v }`;
+    return `(b, v) => b.${propertyName} = v`;
   }
 
   /** Returns the fully-qualified C# type name for a record, e.g.

@@ -15,7 +15,7 @@ namespace SkirClient;
 /// <see cref="Finalize_"/> exactly once.
 /// </para>
 /// </summary>
-public sealed class StructAdapter<T> : ITypeAdapter<T> where T : struct
+public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struct
 {
     // ---- per-field type-erased interface ------------------------------------
 
@@ -26,14 +26,14 @@ public sealed class StructAdapter<T> : ITypeAdapter<T> where T : struct
         TypeDescriptor FieldType { get; }
         bool IsDefault(T value);
         void ToJson(T value, string? eolIndent, StringBuilder sb);
-        T SetFromJson(T value, JsonElement json, bool keep);
+        void SetFromJson(TBuilder builder, JsonElement json, bool keep);
         void Encode(T value, List<byte> output);
-        T SetFromBytes(T value, byte[] data, ref int offset, bool keep);
+        void SetFromBytes(TBuilder builder, byte[] data, ref int offset, bool keep);
     }
 
     private sealed class TypedField<V>(
         string name, int number, Serializer<V> ser,
-        Func<T, V> getter, Func<T, V, T> setter) : IFieldEntry
+        Func<T, V> getter, Action<TBuilder, V> setter) : IFieldEntry
     {
         public string Name => name;
         public int Number => number;
@@ -41,12 +41,12 @@ public sealed class StructAdapter<T> : ITypeAdapter<T> where T : struct
         public bool IsDefault(T v) => ser.IsDefault(getter(v));
         public void ToJson(T v, string? eolIndent, StringBuilder sb) =>
             ser.ToJson(getter(v), eolIndent, sb);
-        public T SetFromJson(T v, JsonElement json, bool keep) =>
-            setter(v, ser.FromJson(json, keep));
+        public void SetFromJson(TBuilder b, JsonElement json, bool keep)
+            => setter(b, ser.FromJson(json, keep));
         public void Encode(T v, List<byte> output) =>
             ser.Encode(getter(v), output);
-        public T SetFromBytes(T v, byte[] data, ref int offset, bool keep) =>
-            setter(v, ser.Decode(data, ref offset, keep));
+        public void SetFromBytes(TBuilder b, byte[] data, ref int offset, bool keep)
+            => setter(b, ser.Decode(data, ref offset, keep));
     }
 
     // ---- state -------------------------------------------------------------
@@ -54,17 +54,22 @@ public sealed class StructAdapter<T> : ITypeAdapter<T> where T : struct
     private readonly T _default;
     private readonly string _modulePath;
     private readonly string _qualifiedName;
+    private readonly Func<TBuilder> _newBuilder;
+    private readonly Func<TBuilder, T> _build;
     private readonly List<IFieldEntry> _orderedFields = [];
     private readonly Dictionary<string, int> _nameToIndex = [];
     private readonly HashSet<int> _removedNumbers = [];
     private List<int?> _slotToIndex = [];
     private readonly StructDescriptor _descriptor;
 
-    public StructAdapter(T defaultValue, string modulePath, string qualifiedName)
+    public StructAdapter(T defaultValue, string modulePath, string qualifiedName,
+        Func<TBuilder> newBuilder, Func<TBuilder, T> build)
     {
         _default = defaultValue;
         _modulePath = modulePath;
         _qualifiedName = qualifiedName;
+        _newBuilder = newBuilder;
+        _build = build;
         _descriptor = new StructDescriptor(modulePath, qualifiedName, "");
     }
 
@@ -72,7 +77,7 @@ public sealed class StructAdapter<T> : ITypeAdapter<T> where T : struct
 
     /// <summary>Registers a struct field. Must be called before <see cref="Finalize_"/>.</summary>
     public void AddField<V>(string name, int number, Serializer<V> serializer,
-        Func<T, V> getter, Func<T, V, T> setter)
+        Func<T, V> getter, Action<TBuilder, V> setter)
     {
         int idx = _orderedFields.Count;
         _orderedFields.Add(new TypedField<V>(name, number, serializer, getter, setter));
@@ -179,26 +184,26 @@ public sealed class StructAdapter<T> : ITypeAdapter<T> where T : struct
 
     private T FromDenseJson(JsonElement arr, bool keep)
     {
-        T t = _default;
+        var b = _newBuilder();
         int i = 0;
         int fill = Math.Min(arr.GetArrayLength(), _slotToIndex.Count);
         foreach (var item in arr.EnumerateArray())
         {
             if (i >= fill) break;
             if (_slotToIndex[i] is int idx)
-                t = _orderedFields[idx].SetFromJson(t, item, keep);
+                _orderedFields[idx].SetFromJson(b, item, keep);
             i++;
         }
-        return t;
+        return _build(b);
     }
 
     private T FromReadableJson(JsonElement obj)
     {
-        T t = _default;
+        var b = _newBuilder();
         foreach (var prop in obj.EnumerateObject())
             if (_nameToIndex.TryGetValue(prop.Name, out int idx))
-                t = _orderedFields[idx].SetFromJson(t, prop.Value, false);
-        return t;
+                _orderedFields[idx].SetFromJson(b, prop.Value, false);
+        return _build(b);
     }
 
     // ---- Binary encode / decode --------------------------------------------
@@ -230,21 +235,21 @@ public sealed class StructAdapter<T> : ITypeAdapter<T> where T : struct
             ? (int)Serializers.DecodeNumber(data, ref offset)
             : wire - 246;
 
-        T t = _default;
+        var b = _newBuilder();
         int recognized = _slotToIndex.Count;
         int fill = Math.Min(encodedSlotCount, recognized);
 
         for (int i = 0; i < fill; i++)
         {
             if (_slotToIndex[i] is int idx)
-                t = _orderedFields[idx].SetFromBytes(t, data, ref offset, keep);
+                _orderedFields[idx].SetFromBytes(b, data, ref offset, keep);
             else
                 Serializers.SkipValue_(data, ref offset);
         }
         for (int i = fill; i < encodedSlotCount; i++)
             Serializers.SkipValue_(data, ref offset);
 
-        return t;
+        return _build(b);
     }
 
     private int GetSlotCount(T value)
