@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -179,7 +180,7 @@ public static class Serializers
         => new OptionalValueSerializer_<T>(inner);
 
     /// <summary>Serializer for a read-only list of values.</summary>
-    public static Serializer<IReadOnlyList<T>> Array<T>(Serializer<T> inner)
+    public static Serializer<ImmutableList<T>> Array<T>(Serializer<T> inner)
         => new ArraySerializer_<T>(inner);
 
     // ---- BoolAdapter ----
@@ -746,13 +747,13 @@ public static class Serializers
         public override TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
     }
 
-    private sealed class ArraySerializer_<T>(Serializer<T> inner) : Serializer<IReadOnlyList<T>>
+    private sealed class ArraySerializer_<T>(Serializer<T> inner) : Serializer<ImmutableList<T>>
     {
-        public override string ToJson(IReadOnlyList<T> value, bool readable = false)
+        public override string ToJson(ImmutableList<T> value, bool readable = false)
             => "[" + string.Join(",", value.Select(v => inner.ToJson(v, readable))) + "]";
-        public override byte[] ToBytes(IReadOnlyList<T> value) => [];
-        public override IReadOnlyList<T> FromJson(string json, bool keepUnrecognizedValues = false) => [];
-        public override IReadOnlyList<T> FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => [];
+        public override byte[] ToBytes(ImmutableList<T> value) => [];
+        public override ImmutableList<T> FromJson(string json, bool keepUnrecognizedValues = false) => ImmutableList<T>.Empty;
+        public override ImmutableList<T> FromBytes(byte[] bytes, bool keepUnrecognizedValues = false) => ImmutableList<T>.Empty;
         public override TypeDescriptor TypeDescriptor { get; } = new ArrayDescriptor(inner.TypeDescriptor);
     }
 }

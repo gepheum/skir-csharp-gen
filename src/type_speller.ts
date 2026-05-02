@@ -25,7 +25,7 @@ export class TypeSpeller {
       }
       case "array": {
         const itemType = this.getCsharpType(type.item);
-        return `global::System.Collections.Generic.IReadOnlyList<${itemType}>`;
+        return `global::System.Collections.Immutable.ImmutableList<${itemType}>`;
       }
       case "optional": {
         const otherType = this.getCsharpType(type.other);
@@ -107,7 +107,7 @@ export class TypeSpeller {
       }
       case "array": {
         const itemType = this.getCsharpType(type.item);
-        return `global::System.Array.Empty<${itemType}>()`;
+        return `global::System.Collections.Immutable.ImmutableList<${itemType}>.Empty`;
       }
       case "optional": {
         return "null";
