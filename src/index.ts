@@ -1,5 +1,7 @@
 import {
+  convertCase,
   type CodeGenerator,
+  type Constant,
   type Field,
   type Module,
   type RecordKey,
@@ -79,6 +81,9 @@ class CsharpSourceFileGenerator {
       this.writeRecord(record, 0);
     }
 
+    // Emit module-level constants (if any).
+    this.writeModuleConstants();
+
     // Emit the per-module lazy initializer that wires all adapters.
     this.lines.push(`// ${"=".repeat(76)}`);
     this.lines.push("// Module initialization");
@@ -102,6 +107,53 @@ class CsharpSourceFileGenerator {
     this.lines.push("}");
 
     return this.lines.join("\n");
+  }
+
+  /** Emits a public static class `Consts` containing all module-level constants. */
+  private writeModuleConstants(): void {
+    const constants = this.module.constants.filter(
+      (
+        c,
+      ): c is Constant & {
+        type: NonNullable<Constant["type"]>;
+        valueAsDenseJson: NonNullable<Constant["valueAsDenseJson"]>;
+      } => c.type !== undefined && c.valueAsDenseJson !== undefined,
+    );
+    if (constants.length === 0) return;
+
+    this.lines.push(`// ${"=".repeat(76)}`);
+    this.lines.push("// Module constants");
+    this.lines.push(`// ${"=".repeat(76)}`);
+    this.lines.push("");
+    this.lines.push("public static class Consts");
+    this.lines.push("{");
+
+    for (const constant of constants) {
+      const propName = convertCase(constant.name.text, "UpperCamel");
+      const type = constant.type;
+      const csharpType = this.typeSpeller.getCsharpType(type);
+      const serExpr = this.typeSpeller.getSerializerExpr(type, false);
+      // Serialize the DenseJson value to a JSON string, then wrap it in a C#
+      // string literal by JSON-stringifying the result (escaping special chars).
+      const jsonLiteral = JSON.stringify(
+        JSON.stringify(constant.valueAsDenseJson),
+      );
+      const lazyField = `_${propName.charAt(0).toLowerCase()}${propName.slice(1)}_Lazy`;
+
+      this.lines.push(
+        `    private static readonly global::System.Lazy<${csharpType}> ${lazyField}`,
+      );
+      this.lines.push(
+        `        = new(() => ${serExpr}.FromJson(${jsonLiteral}));`,
+      );
+      this.lines.push(
+        `    public static ${csharpType} ${propName} => ${lazyField}.Value;`,
+      );
+      this.lines.push("");
+    }
+
+    this.lines.push("}");
+    this.lines.push("");
   }
 
   private writeRecord(record: RecordLocation, indentLevel: number): void {
