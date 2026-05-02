@@ -163,7 +163,7 @@ class CsharpSourceFileGenerator {
 
     this.lines.push(`${bodyIndent}#pragma warning disable CS0169`);
     this.lines.push(
-      `${bodyIndent}private readonly global::SkirClient.UnrecognizedFields<${name}>? _unrecognized;`,
+      `${bodyIndent}private readonly global::SkirClient.Internal.UnrecognizedFields<${name}>? _unrecognized;`,
     );
     this.lines.push(`${bodyIndent}#pragma warning restore CS0169`);
 
@@ -270,7 +270,7 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${bodyIndent}public sealed record UNKNOWN : ${fqBase}`);
     this.lines.push(`${bodyIndent}{`);
     this.lines.push(
-      `${body2Indent}public global::SkirClient.UnrecognizedVariant<${fqBase}>? Value { get; init; } = null;`,
+      `${body2Indent}public global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? Value { get; init; } = null;`,
     );
     this.lines.push(`${bodyIndent}}`);
     this.lines.push(

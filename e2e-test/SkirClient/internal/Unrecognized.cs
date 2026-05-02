@@ -1,4 +1,4 @@
-namespace SkirClient;
+namespace SkirClient.Internal;
 
 // =============================================================================
 // UnrecognizedFormat
