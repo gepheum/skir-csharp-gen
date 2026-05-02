@@ -397,11 +397,11 @@ class CsharpSourceFileGenerator {
     );
     this.lines.push(`${bodyIndent}    new(`);
     this.lines.push(`${body2Indent}x => x switch {`);
-    this.lines.push(`${body3Indent}${fqBase}.UNKNOWN _ => 0,`);
+    this.lines.push(`${body3Indent}${fqBase}.UNKNOWN _ => -1,`);
     variantInfos.forEach(({ typeName }, i) => {
-      this.lines.push(`${body3Indent}${fqBase}.${typeName} _ => ${i + 1},`);
+      this.lines.push(`${body3Indent}${fqBase}.${typeName} _ => ${i},`);
     });
-    this.lines.push(`${body3Indent}_ => 0`);
+    this.lines.push(`${body3Indent}_ => -1`);
     this.lines.push(`${body2Indent}},`);
     this.lines.push(`${body2Indent}u => new ${fqBase}.UNKNOWN { Value = u },`);
     this.lines.push(
@@ -435,7 +435,7 @@ class CsharpSourceFileGenerator {
     }
 
     variantInfos.forEach(({ variant, typeName }, i) => {
-      const kindOrdinal = i + 1;
+      const kindOrdinal = i;
       if (variant.type) {
         const payloadCsharpType = this.typeSpeller.getCsharpType(variant.type);
         const serExpr = this.typeSpeller.getSerializerExpr(variant.type, true);

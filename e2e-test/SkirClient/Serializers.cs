@@ -129,6 +129,8 @@ public static class Serializers
             case 237: return (int)ReadU32(data, ref offset);
             case 238:
             case 239: return (long)ReadU64(data, ref offset);
+            case 240: return ReadU32(data, ref offset);
+            case 241: return (long)ReadU64(data, ref offset);
             default: return 0;
         }
     }
@@ -480,7 +482,7 @@ public static class Serializers
             }
             else
             {
-                output.Add(233);
+                output.Add(240);
                 output.AddRange(LE(BitConverter.GetBytes(BitConverter.SingleToUInt32Bits(input))));
             }
         }
@@ -519,7 +521,7 @@ public static class Serializers
             }
             else
             {
-                output.Add(234);
+                output.Add(241);
                 output.AddRange(LE(BitConverter.GetBytes(BitConverter.DoubleToUInt64Bits(input))));
             }
         }
