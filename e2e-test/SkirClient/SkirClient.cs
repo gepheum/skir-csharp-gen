@@ -167,7 +167,7 @@ public static class Serializers
     public static Serializer<float>    Float32   { get; } = new Float32Serializer_();
     public static Serializer<double>   Float64   { get; } = new Float64Serializer_();
     public static Serializer<string>   String    { get; } = new TypeAdapterSerializer<string>(new StringAdapter());
-    public static Serializer<byte[]>   Bytes     { get; } = new TypeAdapterSerializer<byte[]>(new BytesAdapter());
+    public static Serializer<ImmutableBytes> Bytes { get; } = new TypeAdapterSerializer<ImmutableBytes>(new BytesAdapter());
     public static Serializer<DateTimeOffset> Timestamp { get; } = new TypeAdapterSerializer<DateTimeOffset>(new TimestampAdapter());
 
     /// <summary>Serializer for an optional (nullable) reference type.</summary>
@@ -224,35 +224,35 @@ public static class Serializers
 
     // ---- Binary wire-format helpers ----
 
-    // Returns bytes in little-endian order regardless of host endianness.
-    private static byte[] LE(byte[] bytes)
-    {
-        if (!BitConverter.IsLittleEndian) System.Array.Reverse(bytes);
-        return bytes;
-    }
+        // Returns bytes in little-endian order regardless of host endianness.
+        private static byte[] LE(byte[] bytes)
+        {
+            if (!BitConverter.IsLittleEndian) System.Array.Reverse(bytes);
+            return bytes;
+        }
 
-    // Encodes an i32 using the skir variable-length wire format.
-    //   0..=231         → single byte
-    //   232..=65535     → wire 232 + u16 LE
-    //   65536..=i32.MAX → wire 233 + u32 LE
-    //   -256..=-1       → wire 235 + u8(v+256)
-    //   -65536..=-257   → wire 236 + u16 LE(v+65536)
-    //   i32.MIN..=-65537→ wire 237 + i32 LE
-    private static void EncodeI32(int v, List<byte> output)
-    {
-        if (v >= 0)
+        // Encodes an i32 using the skir variable-length wire format.
+        //   0..=231         → single byte
+        //   232..=65535     → wire 232 + u16 LE
+        //   65536..=i32.MAX → wire 233 + u32 LE
+        //   -256..=-1       → wire 235 + u8(v+256)
+        //   -65536..=-257   → wire 236 + u16 LE(v+65536)
+        //   i32.MIN..=-65537→ wire 237 + i32 LE
+        private static void EncodeI32(int v, List<byte> output)
         {
-            if (v <= 231) { output.Add((byte)v); }
-            else if (v <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)v))); }
-            else { output.Add(233); output.AddRange(LE(BitConverter.GetBytes((uint)v))); }
+            if (v >= 0)
+            {
+                if (v <= 231) { output.Add((byte)v); }
+                else if (v <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)v))); }
+                else { output.Add(233); output.AddRange(LE(BitConverter.GetBytes((uint)v))); }
+            }
+            else
+            {
+                if (v >= -256) { output.Add(235); output.Add((byte)(v + 256)); }
+                else if (v >= -65536) { output.Add(236); output.AddRange(LE(BitConverter.GetBytes((ushort)(v + 65536)))); }
+                else { output.Add(237); output.AddRange(LE(BitConverter.GetBytes(v))); }
+            }
         }
-        else
-        {
-            if (v >= -256) { output.Add(235); output.Add((byte)(v + 256)); }
-            else if (v >= -65536) { output.Add(236); output.AddRange(LE(BitConverter.GetBytes((ushort)(v + 65536)))); }
-            else { output.Add(237); output.AddRange(LE(BitConverter.GetBytes(v))); }
-        }
-    }
 
     // Decodes the body of a variable-length number given the already-consumed wire byte.
     private static long DecodeNumberBody(byte wire, byte[] data, ref int offset)
@@ -376,7 +376,7 @@ public static class Serializers
     }
 
     // Encodes bytes as a lowercase hexadecimal string.
-    private static string EncodeHex(byte[] bytes)
+    private static string EncodeHex(ReadOnlySpan<byte> bytes)
     {
         const string HexChars = "0123456789abcdef";
         var sb = new StringBuilder(bytes.Length * 2);
@@ -547,6 +547,66 @@ public static class Serializers
         public override TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor("float64");
     }
 
+    private sealed class BytesAdapter : ITypeAdapter<ImmutableBytes>
+    {
+        public bool IsDefault(ImmutableBytes input) => input.IsEmpty;
+
+        // Dense: standard base64 with = padding.
+        // Readable: "hex:" + lowercase hex string.
+        public void ToJson(ImmutableBytes input, string? eolIndent, StringBuilder output)
+        {
+            output.Append('"');
+            if (eolIndent != null)
+            {
+                output.Append("hex:");
+                output.Append(EncodeHex(input.Span));
+            }
+            else
+            {
+                output.Append(Convert.ToBase64String(input.Span));
+            }
+            output.Append('"');
+        }
+
+        public ImmutableBytes FromJson(JsonElement json, bool keepUnrecognizedValues)
+        {
+            if (json.ValueKind != JsonValueKind.String) return ImmutableBytes.Empty;
+            string s = json.GetString()!;
+            return s.StartsWith("hex:", StringComparison.Ordinal)
+                ? ImmutableBytes.CopyFrom(DecodeHex(s.AsSpan(4)))
+                : ImmutableBytes.CopyFrom(Convert.FromBase64String(s));
+        }
+
+        // empty → wire 244; nonempty → wire 245 + encode_uint32(len) + raw bytes.
+        public void Encode(ImmutableBytes input, List<byte> output)
+        {
+            if (input.IsEmpty)
+            {
+                output.Add(244);
+            }
+            else
+            {
+                output.Add(245);
+                EncodeUint32((uint)input.Length, output);
+                output.AddRange(input.ToArray());
+            }
+        }
+
+        public ImmutableBytes Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
+        {
+            byte wire = ReadU8(data, ref offset);
+            if (wire == 0 || wire == 244) return ImmutableBytes.Empty;
+            int n = (int)DecodeNumber(data, ref offset);
+            if (offset + n > data.Length) throw new InvalidOperationException("Unexpected end of input");
+            byte[] result = new byte[n];
+            System.Array.Copy(data, offset, result, 0, n);
+            offset += n;
+            return ImmutableBytes.CopyFrom(result);
+        }
+
+        public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Bytes);
+    }
+
     private sealed class TimestampAdapter : ITypeAdapter<DateTimeOffset>
     {
         public bool IsDefault(DateTimeOffset input) => DateTimeOffsetToMillis(input) == 0;
@@ -662,66 +722,6 @@ public static class Serializers
         }
 
         public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.String);
-    }
-
-    private sealed class BytesAdapter : ITypeAdapter<byte[]>
-    {
-        public bool IsDefault(byte[] input) => input.Length == 0;
-
-        // Dense: standard base64 with = padding.
-        // Readable: "hex:" + lowercase hex string.
-        public void ToJson(byte[] input, string? eolIndent, StringBuilder output)
-        {
-            output.Append('"');
-            if (eolIndent != null)
-            {
-                output.Append("hex:");
-                output.Append(EncodeHex(input));
-            }
-            else
-            {
-                output.Append(Convert.ToBase64String(input));
-            }
-            output.Append('"');
-        }
-
-        public byte[] FromJson(JsonElement json, bool keepUnrecognizedValues)
-        {
-            if (json.ValueKind != JsonValueKind.String) return [];
-            string s = json.GetString()!;
-            return s.StartsWith("hex:", StringComparison.Ordinal)
-                ? DecodeHex(s.AsSpan(4))
-                : Convert.FromBase64String(s);
-        }
-
-        // empty → wire 244; nonempty → wire 245 + encode_uint32(len) + raw bytes.
-        public void Encode(byte[] input, List<byte> output)
-        {
-            if (input.Length == 0)
-            {
-                output.Add(244);
-            }
-            else
-            {
-                output.Add(245);
-                EncodeUint32((uint)input.Length, output);
-                output.AddRange(input);
-            }
-        }
-
-        public byte[] Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
-        {
-            byte wire = ReadU8(data, ref offset);
-            if (wire == 0 || wire == 244) return [];
-            int n = (int)DecodeNumber(data, ref offset);
-            if (offset + n > data.Length) throw new InvalidOperationException("Unexpected end of input");
-            byte[] result = new byte[n];
-            System.Array.Copy(data, offset, result, 0, n);
-            offset += n;
-            return result;
-        }
-
-        public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Bytes);
     }
 
     // ---- Composite stubs ----

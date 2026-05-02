@@ -51,7 +51,7 @@ export class TypeSpeller {
           case "string":
             return "string";
           case "bytes":
-            return "byte[]";
+            return "global::SkirClient.ImmutableBytes";
         }
       }
     }
@@ -132,7 +132,7 @@ export class TypeSpeller {
           case "string":
             return '""';
           case "bytes":
-            return "global::System.Array.Empty<byte>()";
+            return "global::SkirClient.ImmutableBytes.Empty";
         }
       }
     }
