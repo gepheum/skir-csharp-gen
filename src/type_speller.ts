@@ -200,7 +200,10 @@ export class TypeSpeller {
       }
       case "array": {
         const itemExpr = this.getSerializerExprInner(type.item, initCtx);
-        return `global::SkirClient.Serializers.Array(${itemExpr})`;
+        const keyExtractor = this.getArrayKeyExtractor(type);
+        return keyExtractor.length > 0
+          ? `global::SkirClient.Serializers.Array(${itemExpr}, ${JSON.stringify(keyExtractor)})`
+          : `global::SkirClient.Serializers.Array(${itemExpr})`;
       }
       case "optional": {
         const inner = type.other;
@@ -219,5 +222,21 @@ export class TypeSpeller {
     throw new Error(
       `Unsupported type kind: ${(type as { kind: string }).kind}`,
     );
+  }
+
+  private getArrayKeyExtractor(
+    type: Extract<ResolvedType, { kind: "array" }>,
+  ): string {
+    const maybeKey = (
+      type as { key?: { path?: readonly { name?: { text?: string } }[] } }
+    ).key;
+    const path = maybeKey?.path;
+    if (!path || path.length === 0) {
+      return "";
+    }
+    const names = path
+      .map((item) => item?.name?.text ?? "")
+      .filter((name) => name.length > 0);
+    return names.join(".");
   }
 }

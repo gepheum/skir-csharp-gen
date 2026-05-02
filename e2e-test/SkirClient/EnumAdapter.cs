@@ -23,6 +23,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
     {
         string Name { get; }
         int Number { get; }
+        string Doc { get; }
         TypeDescriptor? VariantType { get; }
         /// <summary>Returns the constant instance, or null for wrapper variants.</summary>
         T? Constant { get; }
@@ -32,10 +33,11 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
         T DecodeWrap(byte[] data, ref int offset, bool keep);
     }
 
-    private sealed class ConstantEntry(string name, int number, T instance) : IVariantEntry
+    private sealed class ConstantEntry(string name, int number, string doc, T instance) : IVariantEntry
     {
         public string Name => name;
         public int Number => number;
+        public string Doc => doc;
         public TypeDescriptor? VariantType => null;
         public T? Constant => instance;
 
@@ -58,11 +60,12 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
     }
 
     private sealed class WrapperEntry<V>(
-        string name, int number, Serializer<V> ser,
+        string name, int number, string doc, Serializer<V> ser,
         Func<V, T> wrap, Func<T, V> getValue) : IVariantEntry
     {
         public string Name => name;
         public int Number => number;
+        public string Doc => doc;
         public TypeDescriptor? VariantType => ser.TypeDescriptor;
         public T? Constant => null;
 
@@ -141,7 +144,8 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
         Func<T, UnrecognizedVariant<T>?> getUnrecognized,
         T defaultValue,
         string modulePath,
-        string qualifiedName)
+        string qualifiedName,
+        string enumDoc)
     {
         _getKindOrdinal = getKindOrdinal;
         _wrapUnrecognized = wrapUnrecognized;
@@ -149,12 +153,12 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
         _default = defaultValue;
         _modulePath = modulePath;
         _qualifiedName = qualifiedName;
-        _descriptor = new EnumDescriptor(modulePath, qualifiedName, "");
+        _descriptor = new EnumDescriptor(modulePath, qualifiedName, enumDoc);
     }
 
     // ---- builder -----------------------------------------------------------
 
-    public void AddConstantVariant(string name, int number, int kindOrdinal, T instance)
+    public void AddConstantVariant(string name, int number, int kindOrdinal, T instance, string doc = "")
     {
         _numberToEntry[number] = new AnyEntry(EntryKind.Constant, kindOrdinal);
         _nameToKindOrdinal[name] = kindOrdinal;
@@ -163,18 +167,18 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
         var lower = name.ToLowerInvariant();
         if (lower != name) _nameToKindOrdinal[lower] = kindOrdinal;
         while (_kindOrdinalToEntry.Count <= kindOrdinal) _kindOrdinalToEntry.Add(null);
-        _kindOrdinalToEntry[kindOrdinal] = new ConstantEntry(name, number, instance);
+        _kindOrdinalToEntry[kindOrdinal] = new ConstantEntry(name, number, doc, instance);
     }
 
     public void AddWrapperVariant<V>(string name, int number, int kindOrdinal,
-        Serializer<V> serializer, Func<V, T> wrap, Func<T, V> getValue)
+        Serializer<V> serializer, Func<V, T> wrap, Func<T, V> getValue, string doc = "")
     {
         _numberToEntry[number] = new AnyEntry(EntryKind.Wrapper, kindOrdinal);
         _nameToKindOrdinal[name] = kindOrdinal;
         var upper = name.ToUpperInvariant();
         if (upper != name) _nameToKindOrdinal[upper] = kindOrdinal;
         while (_kindOrdinalToEntry.Count <= kindOrdinal) _kindOrdinalToEntry.Add(null);
-        _kindOrdinalToEntry[kindOrdinal] = new WrapperEntry<V>(name, number, serializer, wrap, getValue);
+        _kindOrdinalToEntry[kindOrdinal] = new WrapperEntry<V>(name, number, doc, serializer, wrap, getValue);
     }
 
     public void AddRemovedNumber(int number)
@@ -194,9 +198,9 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
             if (_kindOrdinalToEntry[ko] is IVariantEntry entry)
             {
                 if (entry.Constant != null)
-                    variants.Add(new EnumConstantVariant(entry.Name, entry.Number));
+                    variants.Add(new EnumConstantVariant(entry.Name, entry.Number, entry.Doc));
                 else if (entry.VariantType != null)
-                    variants.Add(new EnumWrapperVariant(entry.Name, entry.Number, entry.VariantType));
+                    variants.Add(new EnumWrapperVariant(entry.Name, entry.Number, entry.VariantType, entry.Doc));
             }
         }
         variants.Sort((a, b) => a.Number.CompareTo(b.Number));

@@ -23,6 +23,7 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
     {
         string Name { get; }
         int Number { get; }
+        string Doc { get; }
         TypeDescriptor FieldType { get; }
         bool IsDefault(T value);
         void ToJson(T value, string? eolIndent, StringBuilder sb);
@@ -32,11 +33,12 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
     }
 
     private sealed class TypedField<V>(
-        string name, int number, Serializer<V> ser,
+        string name, int number, string doc, Serializer<V> ser,
         Func<T, V> getter, Action<TBuilder, V> setter) : IFieldEntry
     {
         public string Name => name;
         public int Number => number;
+        public string Doc => doc;
         public TypeDescriptor FieldType => ser.TypeDescriptor;
         public bool IsDefault(T v) => ser.IsDefault(getter(v));
         public void ToJson(T v, string? eolIndent, StringBuilder sb) =>
@@ -64,7 +66,7 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
     private List<int?> _slotToIndex = [];
     private readonly StructDescriptor _descriptor;
 
-    public StructAdapter(T defaultValue, string modulePath, string qualifiedName,
+    public StructAdapter(T defaultValue, string modulePath, string qualifiedName, string structDoc,
         Func<TBuilder> newBuilder, Func<TBuilder, T> build,
         Func<T, UnrecognizedFields<T>?> getUnrecognized,
         Action<TBuilder, UnrecognizedFields<T>?> setUnrecognized)
@@ -74,7 +76,7 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
         _qualifiedName = qualifiedName;
         _newBuilder = newBuilder;
         _build = build;
-        _descriptor = new StructDescriptor(modulePath, qualifiedName, "");
+        _descriptor = new StructDescriptor(modulePath, qualifiedName, structDoc);
         _getUnrecognized = getUnrecognized;
         _setUnrecognized = setUnrecognized;
     }
@@ -83,10 +85,10 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
 
     /// <summary>Registers a struct field. Must be called before <see cref="Finalize_"/>.</summary>
     public void AddField<V>(string name, int number, Serializer<V> serializer,
-        Func<T, V> getter, Action<TBuilder, V> setter)
+        Func<T, V> getter, Action<TBuilder, V> setter, string doc = "")
     {
         int idx = _orderedFields.Count;
-        _orderedFields.Add(new TypedField<V>(name, number, serializer, getter, setter));
+        _orderedFields.Add(new TypedField<V>(name, number, doc, serializer, getter, setter));
         _nameToIndex[name] = idx;
     }
 
@@ -114,7 +116,7 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
             _slotToIndex[_orderedFields[i].Number] = i;
 
         var fields = _orderedFields
-            .Select(f => new StructField(f.Name, f.Number, f.FieldType))
+            .Select(f => new StructField(f.Name, f.Number, f.FieldType, f.Doc))
             .ToList();
         _descriptor.SetFields(fields);
         _descriptor.SetRemovedNumbers(_removedNumbers);
@@ -166,8 +168,19 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
         else
         {
             sb.Append('[');
-            int slotCount = GetSlotCount(value);
+            int recognizedSlotCount = 0;
+            for (int i = _orderedFields.Count - 1; i >= 0; i--)
+            {
+                if (!_orderedFields[i].IsDefault(value))
+                {
+                    recognizedSlotCount = _orderedFields[i].Number + 1;
+                    break;
+                }
+            }
             var u = _getUnrecognized(value);
+            int slotCount = recognizedSlotCount;
+            if (u != null && u.Format == UnrecognizedFormat.DenseJson)
+                slotCount = Math.Max(slotCount, (int)u.ArrayLen);
             JsonElement[]? unrecArr = null;
             if (u != null && u.Format == UnrecognizedFormat.DenseJson && u.Values.Length > 0)
                 unrecArr = JsonDocument.Parse(u.Values).RootElement.EnumerateArray().ToArray();
@@ -309,6 +322,8 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
         for (int i = _orderedFields.Count - 1; i >= 0; i--)
             if (!_orderedFields[i].IsDefault(value)) { recognized = _orderedFields[i].Number + 1; break; }
         var u = _getUnrecognized(value);
-        return u != null ? Math.Max(recognized, (int)u.ArrayLen) : recognized;
+        return (u != null && u.Format == UnrecognizedFormat.BinaryBytes)
+            ? Math.Max(recognized, (int)u.ArrayLen)
+            : recognized;
     }
 }

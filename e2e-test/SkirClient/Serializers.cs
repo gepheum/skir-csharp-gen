@@ -35,8 +35,8 @@ public static class Serializers
         => new(new OptionalValueAdapter_<T>(inner));
 
     /// <summary>Serializer for a read-only list of values.</summary>
-    public static Serializer<ImmutableList<T>> Array<T>(Serializer<T> inner)
-        => new(new ArrayAdapter_<T>(inner));
+    public static Serializer<ImmutableList<T>> Array<T>(Serializer<T> inner, string keyExtractor = "")
+        => new(new ArrayAdapter_<T>(inner, keyExtractor));
 
     /// <summary>Serializer for a recursive struct field (<see cref="Recursive{T}"/>).</summary>
     public static Serializer<Recursive<T>> RecursiveSerializer<T>(Serializer<T> inner) where T : struct
@@ -785,7 +785,7 @@ public static class Serializers
         public TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
     }
 
-    private sealed class ArrayAdapter_<T>(Serializer<T> inner) : ITypeAdapter<ImmutableList<T>>
+    private sealed class ArrayAdapter_<T>(Serializer<T> inner, string keyExtractor = "") : ITypeAdapter<ImmutableList<T>>
     {
         public bool IsDefault(ImmutableList<T> v) => v.Count == 0;
 
@@ -832,6 +832,6 @@ public static class Serializers
             return builder.ToImmutable();
         }
 
-        public TypeDescriptor TypeDescriptor { get; } = new ArrayDescriptor(inner.TypeDescriptor);
+        public TypeDescriptor TypeDescriptor { get; } = new ArrayDescriptor(inner.TypeDescriptor, keyExtractor);
     }
 }

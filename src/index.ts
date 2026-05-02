@@ -251,11 +251,12 @@ class CsharpSourceFileGenerator {
     const buildLambda = buildFields
       ? `b => new ${name} { ${buildFields}, _unrecognized = b._unrecognized }`
       : `b => new ${name} { _unrecognized = b._unrecognized }`;
+    const structDoc = this.getDocText(record.record.doc);
     this.lines.push(
       `${bodyIndent}private static readonly global::SkirClient.StructAdapter<${fqName}, Builder_> _adapter =`,
     );
     this.lines.push(
-      `${bodyIndent}    new(${name}.DEFAULT, ${JSON.stringify(modulePath)}, ${JSON.stringify(qualifiedName)},`,
+      `${bodyIndent}    new(${name}.DEFAULT, ${JSON.stringify(modulePath)}, ${JSON.stringify(qualifiedName)}, ${JSON.stringify(structDoc)},`,
     );
     this.lines.push(`${bodyIndent}        ${newBuilderLambda},`);
     this.lines.push(`${bodyIndent}        ${buildLambda},`);
@@ -297,7 +298,9 @@ class CsharpSourceFileGenerator {
         `${body2Indent}_adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr},`,
       );
       this.lines.push(`${body2Indent}    ${getter},`);
-      this.lines.push(`${body2Indent}    ${setter});`);
+      this.lines.push(
+        `${body2Indent}    ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
+      );
     }
 
     this.lines.push(`${body2Indent}_adapter.Finalize_();`);
@@ -392,6 +395,7 @@ class CsharpSourceFileGenerator {
     this.lines.push("");
 
     // Adapter field.
+    const enumDoc = this.getDocText(record.record.doc);
     this.lines.push(
       `${bodyIndent}internal static readonly global::SkirClient.EnumAdapter<${fqBase}> _adapter =`,
     );
@@ -409,7 +413,8 @@ class CsharpSourceFileGenerator {
     );
     this.lines.push(`${body2Indent}${name}.DEFAULT,`);
     this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
-    this.lines.push(`${body2Indent}${JSON.stringify(qualifiedName)});`);
+    this.lines.push(`${body2Indent}${JSON.stringify(qualifiedName)},`);
+    this.lines.push(`${body2Indent}${JSON.stringify(enumDoc)});`);
     this.lines.push(
       `${bodyIndent}internal static readonly global::SkirClient.Serializer<${fqBase}> _adapterSerializer = new(_adapter);`,
     );
@@ -447,11 +452,11 @@ class CsharpSourceFileGenerator {
           `${body3Indent}v => new ${fqBase}.${typeName} { Value = v },`,
         );
         this.lines.push(
-          `${body3Indent}x => ((${fqBase}.${typeName})x).Value);`,
+          `${body3Indent}x => ((${fqBase}.${typeName})x).Value, ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       } else {
         this.lines.push(
-          `${body2Indent}_adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, new ${fqBase}.${typeName}());`,
+          `${body2Indent}_adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, new ${fqBase}.${typeName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       }
     });
@@ -498,6 +503,34 @@ class CsharpSourceFileGenerator {
   /** Returns a lambda expression `(b, v) => …` that sets the field value on the builder. */
   private makeStructFieldSetter(_field: Field, propertyName: string): string {
     return `(b, v) => b.${propertyName} = v`;
+  }
+
+  private getDocText(doc: unknown): string {
+    const pieces = (doc as { pieces?: readonly unknown[] } | undefined)?.pieces;
+    if (!pieces || pieces.length === 0) {
+      return "";
+    }
+    const text = pieces
+      .map((piece) => {
+        const p = piece as {
+          kind?: string;
+          text?: string;
+          nameParts?: readonly { token?: { text?: string } }[];
+        };
+        if (p.kind === "text") {
+          return p.text ?? "";
+        }
+        if (p.kind === "reference" && p.nameParts) {
+          return p.nameParts
+            .map((part) => part.token?.text ?? "")
+            .filter((name) => name.length > 0)
+            .join(".");
+        }
+        return "";
+      })
+      .join("")
+      .trim();
+    return text;
   }
 
   /** Returns the fully-qualified C# type name for a record, e.g.
