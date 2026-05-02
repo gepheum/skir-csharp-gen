@@ -375,14 +375,13 @@ class CsharpSourceFileGenerator {
     for (const { variant, typeName } of variantInfos) {
       if (variant.type) {
         const payloadType = this.typeSpeller.getCsharpType(variant.type);
-        const defaultExpr = this.typeSpeller.getDefaultExpr(variant.type);
         // Use explicit body (not positional constructor) to avoid CS8910.
         this.lines.push(
           `${bodyIndent}public sealed record ${typeName} : ${fqBase}`,
         );
         this.lines.push(`${bodyIndent}{`);
         this.lines.push(
-          `${body2Indent}public ${payloadType} Value { get; init; } = ${defaultExpr};`,
+          `${body2Indent}public ${payloadType} Value { get; init; }`,
         );
         this.lines.push(`${bodyIndent}}`);
       } else {
