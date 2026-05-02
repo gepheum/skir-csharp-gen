@@ -320,21 +320,26 @@ class CsharpSourceFileGenerator {
     const variants = record.record.fields;
 
     const fqBase = this.getFullyQualifiedTypeName(record);
+    const kindTypeName = name === "Kind" ? "Kind_" : "Kind";
     const qualifiedName = record.recordAncestors
       .map((r) => r.name.text)
       .join(".");
     const modulePath = record.modulePath;
 
-    // Reserved names within the enum body: Unknown_Type and Unknown are always
-    // synthesized, and the enum name itself must not be reused (CS0542-equivalent
-    // for records).
+    // Reserved names synthesized inside enum bodies.
     const reservedVariantNames = new Set<string>([
-      "Unknown_Type",
       "Unknown",
+      kindTypeName,
+      "Visitor",
+      "Accept",
+      "VariantKind",
       "Serializer",
       "InitAdapter_",
       "_adapter",
       "_adapterSerializer",
+      "_kind",
+      "_value",
+      "_unrecognized",
       name,
     ]);
 
@@ -344,49 +349,144 @@ class CsharpSourceFileGenerator {
       typeName: toVariantTypeName(v, reservedVariantNames),
     }));
 
-    this.lines.push(`${indent}public abstract record ${name}`);
+    this.lines.push(`${indent}public sealed record ${name}`);
     this.lines.push(`${indent}{`);
 
-    // Unknown_Type variant: use explicit body (not positional) to avoid CS8910
-    // (primary constructor conflicts with synthesized copy constructor).
+    this.lines.push(`${bodyIndent}public enum ${kindTypeName}`);
+    this.lines.push(`${bodyIndent}{`);
+    this.lines.push(`${body2Indent}Unknown,`);
+    variantInfos.forEach(({ variant }, i) => {
+      const suffix = i < variantInfos.length - 1 ? "," : "";
+      const upperUnderscore = convertCase(
+        variant.name.text,
+        "UPPER_UNDERSCORE",
+      );
+      const kindName = variant.type
+        ? `${upperUnderscore}_WRAPPER`
+        : `${upperUnderscore}_CONST`;
+      this.lines.push(`${body2Indent}${kindName}${suffix}`);
+    });
+    this.lines.push(`${bodyIndent}}`);
+    this.lines.push("");
+
     this.lines.push(
-      `${bodyIndent}public sealed record Unknown_Type : ${fqBase}`,
+      `${bodyIndent}private ${kindTypeName} _kind { get; init; }`,
+    );
+    this.lines.push(`${bodyIndent}private object? _value { get; init; }`);
+    this.lines.push(
+      `${bodyIndent}private global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? _unrecognized { get; init; }`,
+    );
+    this.lines.push("");
+
+    this.lines.push(
+      `${bodyIndent}private ${name}(${kindTypeName} kind, object? value, global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? unrecognized)`,
     );
     this.lines.push(`${bodyIndent}{`);
-    this.lines.push(
-      `${body2Indent}public global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? Value { get; init; } = null;`,
-    );
+    this.lines.push(`${body2Indent}_kind = kind;`);
+    this.lines.push(`${body2Indent}_value = value;`);
+    this.lines.push(`${body2Indent}_unrecognized = unrecognized;`);
     this.lines.push(`${bodyIndent}}`);
+    this.lines.push("");
+
     this.lines.push(
-      `${bodyIndent}public static readonly Unknown_Type Unknown = new Unknown_Type();`,
+      `${bodyIndent}public ${kindTypeName} VariantKind => _kind;`,
     );
+    this.lines.push("");
+    this.lines.push(
+      `${bodyIndent}public static readonly ${fqBase} Unknown = new(${kindTypeName}.Unknown, null, null);`,
+    );
+
+    for (const { variant, typeName } of variantInfos) {
+      if (!variant.type) {
+        const upperUnderscore = convertCase(
+          variant.name.text,
+          "UPPER_UNDERSCORE",
+        );
+        const kindName = `${upperUnderscore}_CONST`;
+        this.lines.push(
+          `${bodyIndent}public static readonly ${fqBase} ${typeName} = new(${kindTypeName}.${kindName}, null, null);`,
+        );
+      }
+    }
 
     if (variantInfos.length > 0) {
       this.lines.push("");
     }
 
     for (const { variant, typeName } of variantInfos) {
-      if (variant.type) {
-        const payloadType = this.typeSpeller.getCsharpType(variant.type);
-        // Use explicit body (not positional constructor) to avoid CS8910.
-        this.lines.push(
-          `${bodyIndent}public sealed record ${typeName} : ${fqBase}`,
-        );
-        this.lines.push(`${bodyIndent}{`);
-        this.lines.push(
-          `${body2Indent}public ${payloadType} Value { get; init; }`,
-        );
-        this.lines.push(`${bodyIndent}}`);
-      } else {
-        this.lines.push(
-          `${bodyIndent}public sealed record ${typeName}_Type : ${fqBase};`,
-        );
-        this.lines.push(
-          `${bodyIndent}public static readonly ${typeName}_Type ${typeName} = new ${typeName}_Type();`,
-        );
+      if (!variant.type) {
+        continue;
       }
+      const payloadType = this.typeSpeller.getCsharpType(variant.type);
+      const upperUnderscore = convertCase(
+        variant.name.text,
+        "UPPER_UNDERSCORE",
+      );
+      const kindName = `${upperUnderscore}_WRAPPER`;
+
+      this.lines.push(
+        `${bodyIndent}public static ${fqBase} Wrap${typeName}(${payloadType} value) => new(${kindTypeName}.${kindName}, value, null);`,
+      );
+      this.lines.push(
+        `${bodyIndent}public bool Is${typeName}() => _kind == ${kindTypeName}.${kindName};`,
+      );
+      this.lines.push(`${bodyIndent}public ${payloadType} As${typeName}()`);
+      this.lines.push(`${bodyIndent}{`);
+      this.lines.push(
+        `${body2Indent}if (_kind != ${kindTypeName}.${kindName})`,
+      );
+      this.lines.push(
+        `${body3Indent}throw new global::System.InvalidOperationException("kind=" + _kind.ToString());`,
+      );
+      this.lines.push(`${body2Indent}return (${payloadType})_value!;`);
+      this.lines.push(`${bodyIndent}}`);
+      this.lines.push("");
     }
 
+    this.lines.push(`${bodyIndent}public interface Visitor<R>`);
+    this.lines.push(`${bodyIndent}{`);
+    this.lines.push(`${body2Indent}R OnUnknown();`);
+    for (const { variant, typeName } of variantInfos) {
+      if (variant.type) {
+        const payloadType = this.typeSpeller.getCsharpType(variant.type);
+        this.lines.push(`${body2Indent}R On${typeName}(${payloadType} value);`);
+      } else {
+        this.lines.push(`${body2Indent}R On${typeName}();`);
+      }
+    }
+    this.lines.push(`${bodyIndent}}`);
+    this.lines.push("");
+
+    this.lines.push(`${bodyIndent}public R Accept<R>(Visitor<R> visitor)`);
+    this.lines.push(`${bodyIndent}{`);
+    this.lines.push(`${body2Indent}return _kind switch`);
+    this.lines.push(`${body2Indent}{`);
+    this.lines.push(
+      `${body3Indent}${kindTypeName}.Unknown => visitor.OnUnknown(),`,
+    );
+    variantInfos.forEach(({ variant, typeName }, i) => {
+      const upperUnderscore = convertCase(
+        variant.name.text,
+        "UPPER_UNDERSCORE",
+      );
+      const kindName = variant.type
+        ? `${upperUnderscore}_WRAPPER`
+        : `${upperUnderscore}_CONST`;
+      const isLast = i === variantInfos.length - 1;
+      if (variant.type) {
+        const suffix = isLast ? "" : ",";
+        this.lines.push(
+          `${body3Indent}${kindTypeName}.${kindName} => visitor.On${typeName}(As${typeName}())${suffix}`,
+        );
+      } else {
+        const suffix = isLast ? "" : ",";
+        this.lines.push(
+          `${body3Indent}${kindTypeName}.${kindName} => visitor.On${typeName}()${suffix}`,
+        );
+      }
+    });
+    this.lines.push(`${body2Indent}};`);
+    this.lines.push(`${bodyIndent}}`);
     this.lines.push("");
 
     // Adapter field.
@@ -395,21 +495,28 @@ class CsharpSourceFileGenerator {
       `${bodyIndent}internal static readonly global::SkirClient.EnumAdapter<${fqBase}> _adapter =`,
     );
     this.lines.push(`${bodyIndent}    new(`);
-    this.lines.push(`${body2Indent}x => x switch {`);
-    this.lines.push(`${body3Indent}${fqBase}.Unknown_Type _ => 0,`);
-    variantInfos.forEach(({ variant, typeName }, i) => {
-      const switchTypeName = variant.type ? typeName : `${typeName}_Type`;
+    this.lines.push(`${body2Indent}x => x._kind switch`);
+    this.lines.push(`${body2Indent}{`);
+    this.lines.push(`${body3Indent}${fqBase}.${kindTypeName}.Unknown => 0,`);
+    variantInfos.forEach(({ variant }, i) => {
+      const upperUnderscore = convertCase(
+        variant.name.text,
+        "UPPER_UNDERSCORE",
+      );
+      const kindName = variant.type
+        ? `${upperUnderscore}_WRAPPER`
+        : `${upperUnderscore}_CONST`;
+      const suffix = i === variantInfos.length - 1 ? "" : ",";
       this.lines.push(
-        `${body3Indent}${fqBase}.${switchTypeName} _ => ${i + 1},`,
+        `${body3Indent}${fqBase}.${kindTypeName}.${kindName} => ${i + 1}${suffix}`,
       );
     });
-    this.lines.push(`${body3Indent}_ => 0`);
     this.lines.push(`${body2Indent}},`);
     this.lines.push(
-      `${body2Indent}u => new ${fqBase}.Unknown_Type { Value = u },`,
+      `${body2Indent}u => new(${fqBase}.${kindTypeName}.Unknown, null, u),`,
     );
     this.lines.push(
-      `${body2Indent}x => x is ${fqBase}.Unknown_Type _u ? _u.Value : null,`,
+      `${body2Indent}x => x._kind == ${fqBase}.${kindTypeName}.Unknown ? x._unrecognized : null,`,
     );
     this.lines.push(`${body2Indent}${fqBase}.Unknown,`);
     this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
@@ -448,15 +555,13 @@ class CsharpSourceFileGenerator {
           `${body2Indent}_adapter.AddWrapperVariant<${payloadCsharpType}>(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal},`,
         );
         this.lines.push(`${body3Indent}${serExpr},`);
+        this.lines.push(`${body3Indent}v => ${fqBase}.Wrap${typeName}(v),`);
         this.lines.push(
-          `${body3Indent}v => new ${fqBase}.${typeName} { Value = v },`,
-        );
-        this.lines.push(
-          `${body3Indent}x => ((${fqBase}.${typeName})x).Value, ${JSON.stringify(this.getDocText(variant.doc))});`,
+          `${body3Indent}x => x.As${typeName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       } else {
         this.lines.push(
-          `${body2Indent}_adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, new ${fqBase}.${typeName}_Type(), ${JSON.stringify(this.getDocText(variant.doc))});`,
+          `${body2Indent}_adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${fqBase}.${typeName}, ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       }
     });
