@@ -104,9 +104,14 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
         for (int i = 0; i < _orderedFields.Count; i++)
             _nameToIndex[_orderedFields[i].Name] = i;
 
-        _slotToIndex = new List<int?>(_orderedFields.Count);
+        int maxSlot = -1;
+        foreach (var f in _orderedFields) if (f.Number > maxSlot) maxSlot = f.Number;
+        foreach (int r in _removedNumbers) if (r > maxSlot) maxSlot = r;
+
+        _slotToIndex = new List<int?>(maxSlot + 1);
+        for (int i = 0; i <= maxSlot; i++) _slotToIndex.Add(null);
         for (int i = 0; i < _orderedFields.Count; i++)
-            _slotToIndex.Add(i);
+            _slotToIndex[_orderedFields[i].Number] = i;
 
         var fields = _orderedFields
             .Select(f => new StructField(f.Name, f.Number, f.FieldType))
@@ -302,7 +307,7 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
     {
         int recognized = 0;
         for (int i = _orderedFields.Count - 1; i >= 0; i--)
-            if (!_orderedFields[i].IsDefault(value)) { recognized = i + 1; break; }
+            if (!_orderedFields[i].IsDefault(value)) { recognized = _orderedFields[i].Number + 1; break; }
         var u = _getUnrecognized(value);
         return u != null ? Math.Max(recognized, (int)u.ArrayLen) : recognized;
     }

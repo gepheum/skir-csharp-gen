@@ -247,57 +247,7 @@ public static class Serializers
 
     // Skips one encoded value at the current offset (used for removed/unknown slots).
     internal static void SkipValue_(byte[] data, ref int offset)
-    {
-        if (offset >= data.Length) return;
-        byte wire = data[offset++];
-        if (wire <= 231) return;
-
-        switch (wire)
-        {
-            case 232: offset += 2; break;
-            case 233: offset += 4; break;
-            case 234:
-            case 238:
-            case 239: offset += 8; break;
-            case 235: offset += 1; break;
-            case 236: offset += 2; break;
-            case 237: offset += 4; break;
-            case 242:
-            case 244: break;
-            case 243:
-            case 245:
-            {
-                long n = DecodeNumber(data, ref offset);
-                offset += (int)n;
-                break;
-            }
-            case 246: break;
-            case 247:
-                SkipValue_(data, ref offset);
-                break;
-            case 248:
-                SkipValue_(data, ref offset);
-                SkipValue_(data, ref offset);
-                break;
-            case 249:
-                SkipValue_(data, ref offset);
-                SkipValue_(data, ref offset);
-                SkipValue_(data, ref offset);
-                break;
-            case 250:
-            {
-                long n = DecodeNumber(data, ref offset);
-                for (long i = 0; i < n; i++) SkipValue_(data, ref offset);
-                break;
-            }
-            case 251:
-            case 252:
-            case 253:
-            case 254:
-                SkipValue_(data, ref offset);
-                break;
-        }
-    }
+        => BinaryUtils.SkipValue(data, ref offset);
 
     // Encodes bytes as a lowercase hexadecimal string.
     private static string EncodeHex(ReadOnlySpan<byte> bytes)

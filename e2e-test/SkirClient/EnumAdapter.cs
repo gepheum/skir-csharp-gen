@@ -28,7 +28,6 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
         T? Constant { get; }
         void ToJson(T value, string? eolIndent, StringBuilder sb);
         void Encode(T value, List<byte> output);
-        T DefaultValue();
         T WrapFromJson(JsonElement json, bool keep);
         T DecodeWrap(byte[] data, ref int offset, bool keep);
     }
@@ -50,8 +49,6 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
 
         public void Encode(T value, List<byte> output) =>
             Serializers.EncodeUint32_((uint)number, output);
-
-        public T DefaultValue() => instance;
 
         public T WrapFromJson(JsonElement json, bool keep) =>
             throw new InvalidOperationException($"Variant '{name}' is a constant, not a wrapper.");
@@ -110,13 +107,6 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
             ser.Encode(getValue(value), output);
         }
 
-        public T DefaultValue()
-        {
-            int offset = 0;
-            V defaultPayload = ser.Decode([0], ref offset, false);
-            return wrap(defaultPayload);
-        }
-
         public T WrapFromJson(JsonElement json, bool keep) =>
             wrap(ser.FromJson(json, keep));
 
@@ -140,7 +130,8 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
 
     private readonly Dictionary<int, AnyEntry> _numberToEntry = [];
     private readonly Dictionary<string, int> _nameToKindOrdinal = [];
-    private readonly List<IVariantEntry?> _kindOrdinalToEntry = [];
+    // Index 0 = UNKNOWN (always null entry)
+    private readonly List<IVariantEntry?> _kindOrdinalToEntry = [null];
     private readonly HashSet<int> _removedNumbers = [];
     private readonly EnumDescriptor _descriptor;
 
@@ -194,11 +185,11 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
 
     public void Finalize_()
     {
-        _nameToKindOrdinal["UNKNOWN"] = -1;
-        _nameToKindOrdinal["unknown"] = -1;
+        _nameToKindOrdinal["UNKNOWN"] = 0;
+        _nameToKindOrdinal["unknown"] = 0;
 
         var variants = new List<EnumVariant>();
-        for (int ko = 0; ko < _kindOrdinalToEntry.Count; ko++)
+        for (int ko = 1; ko < _kindOrdinalToEntry.Count; ko++)
         {
             if (_kindOrdinalToEntry[ko] is IVariantEntry entry)
             {
@@ -215,7 +206,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
 
     public TypeDescriptor TypeDescriptor => _descriptor;
 
-    public bool IsDefault(T value) => _getKindOrdinal(value) <= 0;
+    public bool IsDefault(T value) => _getKindOrdinal(value) == 0;
 
     public void ToJson(T value, string? eolIndent, StringBuilder output) =>
         ToJsonImpl(value, eolIndent, output);
@@ -234,7 +225,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
     private void ToJsonImpl(T value, string? eolIndent, StringBuilder sb)
     {
         int ko = _getKindOrdinal(value);
-        if (ko < 0)
+        if (ko == 0)
         {
             UnrecognizedToJson(value, eolIndent, sb);
             return;
@@ -360,7 +351,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
     private void EncodeImpl(T value, List<byte> output)
     {
         int ko = _getKindOrdinal(value);
-        if (ko < 0)
+        if (ko == 0)
         {
             var u = _getUnrecognized(value);
             if (u != null && u.Format == UnrecognizedFormat.BinaryBytes && u.Value.Length > 0)
@@ -372,14 +363,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
             return;
         }
         if (ko < _kindOrdinalToEntry.Count && _kindOrdinalToEntry[ko] is IVariantEntry entry)
-        {
-            if (entry.Constant is not null)
-            {
-                Serializers.EncodeUint32_((uint)ko, output);
-                return;
-            }
             entry.Encode(value, output);
-        }
         else
             output.Add(0);
     }
@@ -391,13 +375,9 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
 
         if (wire < 242)
         {
-            // Small form: decode kind ordinal directly.
-            int ko = (int)Serializers.DecodeNumberBody_(wire, data, ref offset);
-            if (ko == 0)
-                return _default;
-            if (ko >= 0 && ko < _kindOrdinalToEntry.Count && _kindOrdinalToEntry[ko] is IVariantEntry entry)
-                return entry.DefaultValue();
-            return _default;
+            // Constant variant: decode number from wire bytes
+            long n = Serializers.DecodeNumberBody_(wire, data, ref offset);
+            return ResolveConstantFromBytes((int)n, keep);
         }
 
         // Wrapper variant
