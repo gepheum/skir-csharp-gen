@@ -747,7 +747,7 @@ public static class Serializers
             r.IsDefaultValue || inner.IsDefault(r.Value);
 
         public void ToJson(Recursive<T> r, string? eolIndent, StringBuilder sb) =>
-            inner.ToJson(r.Value, eolIndent, sb);
+            inner.ToJson(r.IsDefaultValue ? default : r.Value!, eolIndent, sb);
 
         public Recursive<T> FromJson(JsonElement json, bool keep)
         {
@@ -756,7 +756,7 @@ public static class Serializers
         }
 
         public void Encode(Recursive<T> r, List<byte> output) =>
-            inner.Encode(r.Value, output);
+            inner.Encode(r.IsDefaultValue ? default : r.Value!, output);
 
         public Recursive<T> Decode(byte[] data, ref int offset, bool keep)
         {

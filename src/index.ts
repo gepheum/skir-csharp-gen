@@ -351,9 +351,19 @@ class CsharpSourceFileGenerator {
       `${body2Indent}public global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? Value { get; init; } = null;`,
     );
     this.lines.push(`${bodyIndent}}`);
-    this.lines.push(
-      `${bodyIndent}public static ${name} DEFAULT { get; } = new UNKNOWN();`,
-    );
+    if (variantInfos.length > 0) {
+      const firstVariant = variantInfos[0]!;
+      const defaultExpr = firstVariant.variant.type
+        ? `new ${firstVariant.typeName} { Value = ${this.typeSpeller.getDefaultExpr(firstVariant.variant.type)} }`
+        : `new ${firstVariant.typeName}()`;
+      this.lines.push(
+        `${bodyIndent}public static ${name} DEFAULT { get; } = ${defaultExpr};`,
+      );
+    } else {
+      this.lines.push(
+        `${bodyIndent}public static ${name} DEFAULT { get; } = new UNKNOWN();`,
+      );
+    }
 
     if (variantInfos.length > 0) {
       this.lines.push("");
