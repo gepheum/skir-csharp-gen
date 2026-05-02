@@ -163,12 +163,9 @@ class CsharpSourceFileGenerator {
       this.lines.push("");
     }
 
-    this.lines.push(`${bodyIndent}#pragma warning disable CS0169`);
     this.lines.push(
-      `${bodyIndent}private readonly global::SkirClient.Internal.UnrecognizedFields<${name}>? _unrecognized;`,
+      `${bodyIndent}private global::SkirClient.Internal.UnrecognizedFields<${name}>? _unrecognized { get; init; }`,
     );
-    this.lines.push(`${bodyIndent}#pragma warning restore CS0169`);
-
     const defaultInit =
       fieldDefaults.length > 0
         ? `new() { ${fieldDefaults.map((f) => `${f.propertyName} = ${f.defaultExpr}`).join(", ")} }`
@@ -188,6 +185,9 @@ class CsharpSourceFileGenerator {
         `${body2Indent}public ${fieldType} ${propertyName} { get; set; } = ${defaultExpr};`,
       );
     }
+    this.lines.push(
+      `${body2Indent}public global::SkirClient.Internal.UnrecognizedFields<${fqName}>? _unrecognized { get; set; } = null;`,
+    );
     this.lines.push(`${bodyIndent}}`);
     this.lines.push("");
 
@@ -197,8 +197,8 @@ class CsharpSourceFileGenerator {
       .map((f) => `${f.propertyName} = b.${f.propertyName}`)
       .join(", ");
     const buildLambda = buildFields
-      ? `b => new ${name} { ${buildFields} }`
-      : `b => new ${name}()`;
+      ? `b => new ${name} { ${buildFields}, _unrecognized = b._unrecognized }`
+      : `b => new ${name} { _unrecognized = b._unrecognized }`;
     this.lines.push(
       `${bodyIndent}private static readonly global::SkirClient.StructAdapter<${fqName}, Builder_> _adapter =`,
     );
@@ -206,7 +206,9 @@ class CsharpSourceFileGenerator {
       `${bodyIndent}    new(${name}.DEFAULT, ${JSON.stringify(modulePath)}, ${JSON.stringify(qualifiedName)},`,
     );
     this.lines.push(`${bodyIndent}        ${newBuilderLambda},`);
-    this.lines.push(`${bodyIndent}        ${buildLambda});`);
+    this.lines.push(`${bodyIndent}        ${buildLambda},`);
+    this.lines.push(`${bodyIndent}        x => x._unrecognized,`);
+    this.lines.push(`${bodyIndent}        (b, v) => b._unrecognized = v);`);
     this.lines.push(
       `${bodyIndent}internal static readonly global::SkirClient.Serializer<${fqName}> _adapterSerializer = new(_adapter);`,
     );

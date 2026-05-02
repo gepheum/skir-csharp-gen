@@ -57,13 +57,17 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
     private readonly Func<TBuilder> _newBuilder;
     private readonly Func<TBuilder, T> _build;
     private readonly List<IFieldEntry> _orderedFields = [];
+    private readonly Func<T, UnrecognizedFields<T>?> _getUnrecognized;
+    private readonly Action<TBuilder, UnrecognizedFields<T>?> _setUnrecognized;
     private readonly Dictionary<string, int> _nameToIndex = [];
     private readonly HashSet<int> _removedNumbers = [];
     private List<int?> _slotToIndex = [];
     private readonly StructDescriptor _descriptor;
 
     public StructAdapter(T defaultValue, string modulePath, string qualifiedName,
-        Func<TBuilder> newBuilder, Func<TBuilder, T> build)
+        Func<TBuilder> newBuilder, Func<TBuilder, T> build,
+        Func<T, UnrecognizedFields<T>?> getUnrecognized,
+        Action<TBuilder, UnrecognizedFields<T>?> setUnrecognized)
     {
         _default = defaultValue;
         _modulePath = modulePath;
@@ -71,6 +75,8 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
         _newBuilder = newBuilder;
         _build = build;
         _descriptor = new StructDescriptor(modulePath, qualifiedName, "");
+        _getUnrecognized = getUnrecognized;
+        _setUnrecognized = setUnrecognized;
     }
 
     // ---- builder -----------------------------------------------------------
@@ -161,13 +167,23 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
         {
             sb.Append('[');
             int slotCount = GetSlotCount(value);
+            var u = _getUnrecognized(value);
+            JsonElement[]? unrecArr = null;
+            if (u != null && u.Format == UnrecognizedFormat.DenseJson && u.Values.Length > 0)
+                unrecArr = JsonDocument.Parse(u.Values).RootElement.EnumerateArray().ToArray();
             for (int i = 0; i < slotCount; i++)
             {
                 if (i > 0) sb.Append(',');
                 if (i < _slotToIndex.Count && _slotToIndex[i] is int idx)
                     _orderedFields[idx].ToJson(value, null, sb);
                 else
-                    sb.Append('0');
+                {
+                    int unrecIdx = i - _slotToIndex.Count;
+                    if (unrecArr != null && unrecIdx >= 0 && unrecIdx < unrecArr.Length)
+                        sb.Append(unrecArr[unrecIdx].GetRawText());
+                    else
+                        sb.Append('0');
+                }
             }
             sb.Append(']');
         }
@@ -185,14 +201,31 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
     private T FromDenseJson(JsonElement arr, bool keep)
     {
         var b = _newBuilder();
+        int arrLen = arr.GetArrayLength();
+        int fill = Math.Min(arrLen, _slotToIndex.Count);
         int i = 0;
-        int fill = Math.Min(arr.GetArrayLength(), _slotToIndex.Count);
         foreach (var item in arr.EnumerateArray())
         {
             if (i >= fill) break;
             if (_slotToIndex[i] is int idx)
                 _orderedFields[idx].SetFromJson(b, item, keep);
             i++;
+        }
+        if (keep && arrLen > _slotToIndex.Count)
+        {
+            var sb = new StringBuilder("[");
+            bool first = true;
+            int j = 0;
+            foreach (var item in arr.EnumerateArray())
+            {
+                if (j++ < _slotToIndex.Count) continue;
+                if (!first) sb.Append(',');
+                first = false;
+                sb.Append(item.GetRawText());
+            }
+            sb.Append(']');
+            _setUnrecognized(b, UnrecognizedFields<T>.FromJson(
+                (uint)arrLen, Encoding.UTF8.GetBytes(sb.ToString())));
         }
         return _build(b);
     }
@@ -216,12 +249,20 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
         else { output.Add(250); Serializers.EncodeUint32_((uint)slotCount, output); }
 
         int recognized = _slotToIndex.Count;
-        for (int i = 0; i < slotCount; i++)
+        for (int i = 0; i < Math.Min(slotCount, recognized); i++)
         {
-            if (i < recognized && _slotToIndex[i] is int idx)
+            if (_slotToIndex[i] is int idx)
                 _orderedFields[idx].Encode(value, output);
             else
                 output.Add(0);
+        }
+        if (slotCount > recognized)
+        {
+            var u = _getUnrecognized(value);
+            if (u != null && u.Format == UnrecognizedFormat.BinaryBytes && u.Values.Length > 0)
+                output.AddRange(u.Values);
+            else
+                for (int i = recognized; i < slotCount; i++) output.Add(0);
         }
     }
 
@@ -246,17 +287,28 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
             else
                 Serializers.SkipValue_(data, ref offset);
         }
-        for (int i = fill; i < encodedSlotCount; i++)
-            Serializers.SkipValue_(data, ref offset);
-
+        if (keep && encodedSlotCount > recognized)
+        {
+            int before = offset;
+            for (int i = fill; i < encodedSlotCount; i++)
+                Serializers.SkipValue_(data, ref offset);
+            _setUnrecognized(b, UnrecognizedFields<T>.FromBytes(
+                (uint)encodedSlotCount, data[before..offset]));
+        }
+        else
+        {
+            for (int i = fill; i < encodedSlotCount; i++)
+                Serializers.SkipValue_(data, ref offset);
+        }
         return _build(b);
     }
 
     private int GetSlotCount(T value)
     {
+        int recognized = 0;
         for (int i = _orderedFields.Count - 1; i >= 0; i--)
-            if (!_orderedFields[i].IsDefault(value))
-                return _orderedFields[i].Number + 1;
-        return 0;
+            if (!_orderedFields[i].IsDefault(value)) { recognized = _orderedFields[i].Number + 1; break; }
+        var u = _getUnrecognized(value);
+        return u != null ? Math.Max(recognized, (int)u.ArrayLen) : recognized;
     }
 }

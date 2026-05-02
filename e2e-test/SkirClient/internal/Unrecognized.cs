@@ -4,6 +4,7 @@ namespace SkirClient.Internal;
 // UnrecognizedFormat
 // =============================================================================
 
+
 /// <summary>The serialization format used to capture unrecognized data.</summary>
 internal enum UnrecognizedFormat
 {
@@ -23,7 +24,7 @@ internal enum UnrecognizedFormat
 /// this type directly.
 /// </summary>
 /// <typeparam name="T">The struct type that owns this instance.</typeparam>
-public sealed class UnrecognizedFields<T>
+public sealed class UnrecognizedFields<T> : IEquatable<UnrecognizedFields<T>>
 {
     internal UnrecognizedFormat Format { get; }
 
@@ -55,6 +56,16 @@ public sealed class UnrecognizedFields<T>
     /// </summary>
     internal static UnrecognizedFields<T> FromBytes(uint arrayLen, byte[] rawBytes) =>
         new(UnrecognizedFormat.BinaryBytes, arrayLen, rawBytes);
+
+    public bool Equals(UnrecognizedFields<T>? other) =>
+        other != null &&
+        Format == other.Format &&
+        ArrayLen == other.ArrayLen &&
+        Values.AsSpan().SequenceEqual(other.Values.AsSpan());
+
+    public override bool Equals(object? obj) => Equals(obj as UnrecognizedFields<T>);
+
+    public override int GetHashCode() => HashCode.Combine(Format, ArrayLen, Values.Length);
 }
 
 // =============================================================================
@@ -68,7 +79,7 @@ public sealed class UnrecognizedFields<T>
 /// this type directly.
 /// </summary>
 /// <typeparam name="T">The enum type that owns this instance.</typeparam>
-public sealed class UnrecognizedVariant<T>
+public sealed class UnrecognizedVariant<T> : IEquatable<UnrecognizedVariant<T>>
 {
     internal UnrecognizedFormat Format { get; }
 
@@ -101,4 +112,14 @@ public sealed class UnrecognizedVariant<T>
     /// </summary>
     internal static UnrecognizedVariant<T> FromBytes(int number, byte[] rawBytes) =>
         new(UnrecognizedFormat.BinaryBytes, number, rawBytes);
+
+    public bool Equals(UnrecognizedVariant<T>? other) =>
+        other != null &&
+        Format == other.Format &&
+        Number == other.Number &&
+        Value.AsSpan().SequenceEqual(other.Value.AsSpan());
+
+    public override bool Equals(object? obj) => Equals(obj as UnrecognizedVariant<T>);
+
+    public override int GetHashCode() => HashCode.Combine(Format, Number, Value.Length);
 }
