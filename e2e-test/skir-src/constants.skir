@@ -49,3 +49,5 @@ const LARGE_HASH64: hash64 = 18446744073709551615;
 const B: bool = false;
 
 const PI: float64 = 3.141592653589793;
+
+struct Consts {}

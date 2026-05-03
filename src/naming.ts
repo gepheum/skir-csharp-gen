@@ -148,6 +148,9 @@ export function getTypeName(record: RecordLocation): string {
   const parts: string[] = [];
   for (const ancestor of record.recordAncestors) {
     let current = toTypeSegment(ancestor.name.text);
+    if (parts.length === 0 && (current === "Consts" || current === "Methods")) {
+      current = current.concat("_");
+    }
     const parent = parts.at(-1);
     if (parent === current) {
       current = `${current}_`;

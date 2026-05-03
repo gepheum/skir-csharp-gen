@@ -1,8 +1,11 @@
+// TODO: verify no name conflict between module and class name???
+
 import {
   convertCase,
   type CodeGenerator,
   type Constant,
   type Field,
+  type Method,
   type Module,
   type RecordKey,
   type RecordLocation,
@@ -81,30 +84,35 @@ class CsharpSourceFileGenerator {
       this.writeRecord(record, 0);
     }
 
+    // Emit module-level RPC methods (if any).
+    this.writeModuleMethods();
+
     // Emit module-level constants (if any).
     this.writeModuleConstants();
 
     // Emit the per-module lazy initializer that wires all adapters.
-    this.lines.push(`// ${"=".repeat(76)}`);
-    this.lines.push("// Module initialization");
-    this.lines.push(`// ${"=".repeat(76)}`);
-    this.lines.push("");
-    this.lines.push("internal static class ModuleInit_");
-    this.lines.push("{");
-    this.lines.push(
-      "    private static readonly global::System.Lazy<bool> _lazy = new(() =>",
-    );
-    this.lines.push("    {");
-    for (const record of moduleRecords) {
-      const fqn = this.getFullyQualifiedTypeName(record);
-      this.lines.push(`        ${fqn}.InitAdapter_();`);
+    if (moduleRecords.length > 0) {
+      this.lines.push(`// ${"=".repeat(76)}`);
+      this.lines.push("// Module initialization");
+      this.lines.push(`// ${"=".repeat(76)}`);
+      this.lines.push("");
+      this.lines.push("internal static class ModuleInit_");
+      this.lines.push("{");
+      this.lines.push(
+        "    private static readonly global::System.Lazy<bool> _lazy = new(() =>",
+      );
+      this.lines.push("    {");
+      for (const record of moduleRecords) {
+        const fqn = this.getFullyQualifiedTypeName(record);
+        this.lines.push(`        ${fqn}.InitAdapter_();`);
+      }
+      this.lines.push("        return true;");
+      this.lines.push("    });");
+      this.lines.push(
+        "    internal static void EnsureInit() => _ = _lazy.Value;",
+      );
+      this.lines.push("}");
     }
-    this.lines.push("        return true;");
-    this.lines.push("    });");
-    this.lines.push(
-      "    internal static void EnsureInit() => _ = _lazy.Value;",
-    );
-    this.lines.push("}");
 
     return this.lines.join("\n");
   }
@@ -148,6 +156,70 @@ class CsharpSourceFileGenerator {
       );
       this.lines.push(
         `    public static ${csharpType} ${propName} => ${lazyField}.Value;`,
+      );
+      this.lines.push("");
+    }
+
+    this.lines.push("}");
+    this.lines.push("");
+  }
+
+  /** Emits a public static class `Methods` containing all module-level RPC methods. */
+  private writeModuleMethods(): void {
+    const methods = this.module.methods.filter(
+      (
+        m,
+      ): m is Method & {
+        requestType: NonNullable<Method["requestType"]>;
+        responseType: NonNullable<Method["responseType"]>;
+      } => m.requestType !== undefined && m.responseType !== undefined,
+    );
+    if (methods.length === 0) return;
+
+    this.lines.push(`// ${"=".repeat(76)}`);
+    this.lines.push("// Module methods");
+    this.lines.push(`// ${"=".repeat(76)}`);
+    this.lines.push("");
+    this.lines.push("public static class Methods");
+    this.lines.push("{");
+
+    const usedNames = new Set<string>(["Methods"]);
+
+    for (const method of methods) {
+      let propName = convertCase(method.name.text, "UpperCamel");
+      while (usedNames.has(propName)) {
+        propName = `${propName}_`;
+      }
+      usedNames.add(propName);
+
+      const requestType = this.typeSpeller.getCsharpType(method.requestType);
+      const responseType = this.typeSpeller.getCsharpType(method.responseType);
+      const requestSerExpr = this.typeSpeller.getSerializerExpr(
+        method.requestType,
+        false,
+      );
+      const responseSerExpr = this.typeSpeller.getSerializerExpr(
+        method.responseType,
+        false,
+      );
+
+      const methodType = `global::SkirClient.Method<${requestType}, ${responseType}>`;
+      const lazyField = `_${propName.charAt(0).toLowerCase()}${propName.slice(1)}_Lazy`;
+
+      this.lines.push(
+        `    private static readonly global::System.Lazy<${methodType}> ${lazyField}`,
+      );
+      this.lines.push("        = new(() => new(");
+      this.lines.push(`            ${JSON.stringify(method.name.text)},`);
+      this.lines.push(`            ${method.number},`);
+      this.lines.push(
+        `            ${JSON.stringify(this.getDocText(method.doc))},`,
+      );
+      this.lines.push(`            ${requestSerExpr},`);
+      this.lines.push(`            ${responseSerExpr}`);
+      this.lines.push("        ));");
+      this.lines.push(
+        `    public static ${methodType} ${propName} => ${lazyField}.Value;`,
       );
       this.lines.push("");
     }
