@@ -350,15 +350,15 @@ class CsharpSourceFileGenerator {
     this.lines.push(
       `${bodyIndent}internal static readonly global::SkirClient.Internal.StructAdapter<${fqName}, Builder_> _adapter = new(`,
     );
-    this.lines.push(`${bodyIndent}        ${name}.Default,`);
-    this.lines.push(`${bodyIndent}        ${JSON.stringify(modulePath)},`);
-    this.lines.push(`${bodyIndent}        ${JSON.stringify(qualifiedName)},`);
-    this.lines.push(`${bodyIndent}        ${JSON.stringify(structDoc)},`);
-    this.lines.push(`${bodyIndent}        ${newBuilderLambda},`);
-    this.lines.push(`${bodyIndent}        ${buildLambda},`);
-    this.lines.push(`${bodyIndent}        x => x._unrecognized,`);
-    this.lines.push(`${bodyIndent}        (b, v) => b._unrecognized = v`);
-    this.lines.push(`${bodyIndent}    );`);
+    this.lines.push(`${body2Indent}${name}.Default,`);
+    this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
+    this.lines.push(`${body2Indent}${JSON.stringify(qualifiedName)},`);
+    this.lines.push(`${body2Indent}${JSON.stringify(structDoc)},`);
+    this.lines.push(`${body2Indent}${newBuilderLambda},`);
+    this.lines.push(`${body2Indent}${buildLambda},`);
+    this.lines.push(`${body2Indent}x => x._unrecognized,`);
+    this.lines.push(`${body2Indent}(b, v) => b._unrecognized = v`);
+    this.lines.push(`${bodyIndent});`);
     // Serializer property.
     this.lines.push(
       `${bodyIndent}public static global::SkirClient.Serializer<${fqName}> Serializer`,
@@ -460,11 +460,7 @@ class CsharpSourceFileGenerator {
       const getter = this.makeStructFieldGetter(field, propertyName);
       const setter = this.makeStructFieldSetter(field, propertyName);
       this.lines.push(
-        `${body2Indent}_adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr},`,
-      );
-      this.lines.push(`${body2Indent}    ${getter},`);
-      this.lines.push(
-        `${body2Indent}    ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
+        `${body2Indent}_adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr}, ${getter}, ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
       );
     }
 
@@ -693,12 +689,7 @@ class CsharpSourceFileGenerator {
         const payloadCsharpType = this.typeSpeller.getCsharpType(variant.type);
         const serExpr = this.typeSpeller.getSerializerExpr(variant.type, true);
         this.lines.push(
-          `${body2Indent}_adapter.AddWrapperVariant<${payloadCsharpType}>(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal},`,
-        );
-        this.lines.push(`${body3Indent}${serExpr},`);
-        this.lines.push(`${body3Indent}v => ${fqBase}.Wrap${prefixedName}(v),`);
-        this.lines.push(
-          `${body3Indent}x => x.As${prefixedName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
+          `${body2Indent}_adapter.AddWrapperVariant<${payloadCsharpType}>(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${serExpr}, v => ${fqBase}.Wrap${prefixedName}(v), x => x.As${prefixedName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       } else {
         this.lines.push(
