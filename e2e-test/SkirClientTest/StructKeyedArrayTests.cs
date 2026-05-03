@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Immutable;
 using SkirClient;
-using Skirout.Enums;
-using Skirout.Structs;
+using Skirout_Enums;
+using Skirout_Structs;
 
 namespace SkirClientTest;
 

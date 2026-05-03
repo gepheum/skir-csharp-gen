@@ -1,4 +1,4 @@
-using Skirout.FullName;
+using Skirout_FullName;
 
 namespace SkirClientTest;
 

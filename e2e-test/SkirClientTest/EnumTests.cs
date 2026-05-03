@@ -1,5 +1,5 @@
 using System.Collections.Immutable;
-using Skirout.Enums;
+using Skirout_Enums;
 
 namespace SkirClientTest;
 

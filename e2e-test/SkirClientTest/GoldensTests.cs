@@ -2,7 +2,7 @@ using System;
 using System.Collections.Immutable;
 using System.Linq;
 using SkirClient;
-using Skirout.External.Gepheum.SkirGoldenTests.Goldens;
+using Skirout_External_Gepheum_SkirGoldenTests_Goldens;
 
 namespace SkirClientTest;
 

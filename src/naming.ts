@@ -126,8 +126,8 @@ function toTypeSegment(rawName: string): string {
 /**
  * Derives a C# namespace from a skir module path.
  * Examples:
- *   "full_name.skir"     -> "Skirout.FullName"
- *   "vehicles/car.skir" -> "Skirout.Vehicles.Car"
+ *   "full_name.skir"     -> "Skirout_FullName"
+ *   "vehicles/car.skir" -> "Skirout_Vehicles_Car"
  */
 export function modulePathToNamespace(modulePath: string): string {
   const segments = modulePath
@@ -136,8 +136,8 @@ export function modulePathToNamespace(modulePath: string): string {
     .split("/");
   const pascal = segments
     .map((s) => toTypeSegment(s.replace(/-/g, "_")))
-    .join(".");
-  return `Skirout.${pascal}`;
+    .join("_");
+  return `Skirout_${pascal}`;
 }
 
 /**
@@ -193,11 +193,11 @@ export function toVariantTypeName(variant: Field): string {
 
 /**
  * Converts a skir module path to the corresponding C# output file path,
- * with each path segment (directories and file stem) in PascalCase.
+ * keeping path segment names in lower_case.
  * Examples:
- *   "full_name.skir"     -> "FullName.cs"
- *   "vehicles/car.skir" -> "Vehicles/Car.cs"
- *   "@foo/bar/baz.skir" -> "@foo/Bar/Baz.cs"
+ *   "full_name.skir"     -> "full_name.cs"
+ *   "vehicles/car.skir" -> "vehicles/car.cs"
+ *   "@foo/bar/baz.skir" -> "@foo/bar/baz.cs"
  */
 export function modulePathToCsharpPath(modulePath: string): string {
   // Preserve a leading @scope/ prefix verbatim (external packages).
@@ -206,8 +206,8 @@ export function modulePathToCsharpPath(modulePath: string): string {
   const rest = atMatch?.[2] ?? modulePath;
 
   const parts = rest.replace(/\.skir$/, "").split("/");
-  const pascal = parts
-    .map((p) => toTypeSegment(p.replace(/-/g, "_")))
+  const lowerSnake = parts
+    .map((p) => p.replace(/-/g, "_").toLowerCase())
     .join("/");
-  return `${prefix}${pascal}.cs`;
+  return `${prefix}${lowerSnake}.cs`;
 }
