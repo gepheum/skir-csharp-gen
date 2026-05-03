@@ -1,5 +1,3 @@
-// TODO: verify no name conflict between module and class name (maybe lowercased names)???
-//   YES TO SUGGESTIONS
 // TODO: toJson or toJsonCode
 // Formatting...
 
@@ -124,19 +122,30 @@ class CsharpSourceFileGenerator {
       this.lines.push("");
       this.lines.push("file static class _ModuleInit");
       this.lines.push("{");
+
+      for (const record of moduleRecords) {
+        if (record.record.recordType === "struct") {
+          this.writeModuleInitBuilder(record, 1);
+        }
+      }
+
+      for (const record of moduleRecords) {
+        this.writeModuleInitAdapterFields(record, 1);
+      }
+
       this.lines.push(
         "    private static readonly global::System.Lazy<bool> _lazy = new(() =>",
       );
       this.lines.push("    {");
       for (const record of moduleRecords) {
-        const fqn = this.getFullyQualifiedTypeName(record);
-        this.lines.push(`        ${fqn}._initAdapter();`);
+        this.writeModuleInitAdapterInit(record, 2);
       }
       this.lines.push("        return true;");
       this.lines.push("    });");
       this.lines.push(
-        "    internal static void _ensureInit() => _ = _lazy.Value;",
+        "    public static void _ensureInit() => _ = _lazy.Value;",
       );
+
       this.lines.push("}");
     }
 
@@ -288,38 +297,30 @@ class CsharpSourceFileGenerator {
     const body2Indent = "    ".repeat(indentLevel + 2);
 
     const fqName = this.getFullyQualifiedTypeName(record);
-    const qualifiedName = record.recordAncestors
-      .map((r) => r.name.text)
-      .join(".");
-    const modulePath = record.modulePath;
 
     this.lines.push(`${indent}public readonly record struct ${name}`);
     this.lines.push(`${indent}{`);
 
-    // Pre-compute property names to reuse in both field declarations and _initAdapter.
+    // Pre-compute property names to reuse in both builder, field declarations, and _initAdapter.
     const fieldInfos = this.computeFieldInfos(record, name);
 
-    // Collect field info for Default init, _Builder, and the build lambda.
+    // Collect field info for Default init.
     const fieldDefaults: Array<{ propertyName: string; defaultExpr: string }> =
       [];
 
     for (const { field, propertyName } of fieldInfos) {
       const fieldType = this.typeSpeller.getCsharpFieldType(field);
       const defaultExpr = this.typeSpeller.getFieldDefaultExpr(field);
-
+      fieldDefaults.push({ propertyName, defaultExpr });
       this.lines.push(
         `${bodyIndent}public required ${fieldType} ${propertyName} { get; init; }`,
       );
-      fieldDefaults.push({ propertyName, defaultExpr });
-    }
-
-    if (fieldInfos.length > 0) {
-      this.lines.push("");
     }
 
     this.lines.push(
-      `${bodyIndent}private global::SkirClient.Internal.UnrecognizedFields<${name}>? _unrecognized { get; init; }`,
+      `${bodyIndent}internal global::SkirClient.Internal.UnrecognizedFields<${name}>? _unrecognized { get; init; }`,
     );
+    this.lines.push("");
     const defaultInit =
       fieldDefaults.length > 0
         ? `new() { ${fieldDefaults.map((f) => `${f.propertyName} = ${f.defaultExpr}`).join(", ")} }`
@@ -329,52 +330,12 @@ class CsharpSourceFileGenerator {
     );
     this.lines.push("");
 
-    // Nested builder class.
-    this.lines.push(`${bodyIndent}private sealed class _Builder`);
-    this.lines.push(`${bodyIndent}{`);
-    for (const { field, propertyName } of fieldInfos) {
-      const fieldType = this.typeSpeller.getCsharpFieldType(field);
-      const defaultExpr = this.typeSpeller.getFieldDefaultExpr(field);
-      this.lines.push(
-        `${body2Indent}public ${fieldType} ${propertyName} { get; set; } = ${defaultExpr};`,
-      );
-    }
-    this.lines.push(
-      `${body2Indent}public global::SkirClient.Internal.UnrecognizedFields<${fqName}>? _unrecognized { get; set; } = null;`,
-    );
-    this.lines.push(`${bodyIndent}}`);
-    this.lines.push("");
-
-    // Adapter field.
-    const newBuilderLambda = "() => new _Builder()";
-    const buildFields = fieldDefaults
-      .map((f) => `${f.propertyName} = b.${f.propertyName}`)
-      .join(", ");
-    const buildLambda = buildFields
-      ? `b => new ${name} { ${buildFields}, _unrecognized = b._unrecognized }`
-      : `b => new ${name} { _unrecognized = b._unrecognized }`;
-    const structDoc = this.getDocText(record.record.doc);
-    this.lines.push(
-      `${bodyIndent}private static readonly global::SkirClient.Internal.StructAdapter<${fqName}, _Builder> _structAdapter = new(`,
-    );
-    this.lines.push(`${body2Indent}${name}.Default,`);
-    this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
-    this.lines.push(`${body2Indent}${JSON.stringify(qualifiedName)},`);
-    this.lines.push(`${body2Indent}${JSON.stringify(structDoc)},`);
-    this.lines.push(`${body2Indent}${newBuilderLambda},`);
-    this.lines.push(`${body2Indent}${buildLambda},`);
-    this.lines.push(`${body2Indent}x => x._unrecognized,`);
-    this.lines.push(`${body2Indent}(b, v) => b._unrecognized = v`);
-    this.lines.push(`${bodyIndent});`);
-    this.lines.push(
-      `${bodyIndent}internal static global::SkirClient.Internal.ITypeAdapter<${fqName}> _adapter => _structAdapter;`,
-    );
     // Serializer property.
     this.lines.push(
       `${bodyIndent}public static global::SkirClient.Serializer<${fqName}> Serializer`,
     );
     this.lines.push(
-      `${bodyIndent}{ get { _ModuleInit._ensureInit(); return new(_adapter); } }`,
+      `${bodyIndent}{ get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
     );
     this.lines.push("");
 
@@ -451,31 +412,6 @@ class CsharpSourceFileGenerator {
       this.lines.push("");
     }
 
-    // _initAdapter method.
-    this.lines.push(`${bodyIndent}internal static void _initAdapter()`);
-    this.lines.push(`${bodyIndent}{`);
-
-    for (const removedNumber of record.record.removedNumbers) {
-      this.lines.push(
-        `${body2Indent}_structAdapter.AddRemovedNumber(${removedNumber});`,
-      );
-    }
-
-    for (const { field, propertyName } of fieldInfos) {
-      const serExpr = this.typeSpeller.getSerializerExpr(
-        field.type!,
-        true,
-        field.isRecursive,
-      );
-      const getter = this.makeStructFieldGetter(field, propertyName);
-      const setter = this.makeStructFieldSetter(field, propertyName);
-      this.lines.push(
-        `${body2Indent}_structAdapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr}, ${getter}, ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
-      );
-    }
-
-    this.lines.push(`${body2Indent}_structAdapter.Finalize_();`);
-    this.lines.push(`${bodyIndent}}`);
     this.lines.push(`${indent}}`);
   }
 
@@ -494,10 +430,6 @@ class CsharpSourceFileGenerator {
     const kindTypeName = name === "KindType" ? "KindType_" : "KindType";
     const kindMemberName = name === "Kind" ? "Kind_" : "Kind";
     const kindMemberVisibility = name === "Kind" ? "private" : "public";
-    const qualifiedName = record.recordAncestors
-      .map((r) => r.name.text)
-      .join(".");
-    const modulePath = record.modulePath;
 
     // Pre-compute variant type names to reuse in declarations and _initAdapter.
     const variantInfos = variants.map((v) => ({
@@ -644,12 +576,11 @@ class CsharpSourceFileGenerator {
     );
     this.lines.push("");
 
-    // Adapter field.
-    const enumDoc = this.getDocText(record.record.doc);
     this.lines.push(
-      `${bodyIndent}internal static readonly global::SkirClient.Internal.EnumAdapter<${fqBase}> _adapter = new(`,
+      `${bodyIndent}public static int _getKindOrdinalForAdapter(${fqBase} x)`,
     );
-    this.lines.push(`${body2Indent}x => x.${kindMemberName} switch`);
+    this.lines.push(`${bodyIndent}{`);
+    this.lines.push(`${body2Indent}return x.${kindMemberName} switch`);
     this.lines.push(`${body2Indent}{`);
     this.lines.push(`${body3Indent}${fqBase}.${kindTypeName}.Unknown => 0,`);
     variantInfos.forEach(({ variant }, i) => {
@@ -662,34 +593,169 @@ class CsharpSourceFileGenerator {
     this.lines.push(
       `${body3Indent}_ => throw new global::System.InvalidOperationException("kind=" + x.${kindMemberName}.ToString())`,
     );
-    this.lines.push(`${body2Indent}},`);
+    this.lines.push(`${body2Indent}};`);
+    this.lines.push(`${bodyIndent}}`);
     this.lines.push(
-      `${body2Indent}u => new(${fqBase}.${kindTypeName}.Unknown, u),`,
+      `${bodyIndent}public static ${fqBase} _wrapUnrecognizedForAdapter(global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> u) => new(${fqBase}.${kindTypeName}.Unknown, u);`,
     );
     this.lines.push(
-      `${body2Indent}x => x.${kindMemberName} == ${fqBase}.${kindTypeName}.Unknown ? x.Value_ as global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> : null,`,
+      `${bodyIndent}public static global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? _getUnrecognizedForAdapter(${fqBase} x) => x.${kindMemberName} == ${fqBase}.${kindTypeName}.Unknown ? x.Value_ as global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> : null;`,
     );
-    this.lines.push(`${body2Indent}${fqBase}.Unknown,`);
-    this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
-    this.lines.push(`${body2Indent}${JSON.stringify(qualifiedName)},`);
-    this.lines.push(`${body2Indent}${JSON.stringify(enumDoc)}`);
-    this.lines.push(`${bodyIndent});`);
+    this.lines.push("");
+
     // Serializer property.
     this.lines.push(
       `${bodyIndent}public static global::SkirClient.Serializer<${fqBase}> Serializer`,
     );
     this.lines.push(
-      `${bodyIndent}{ get { _ModuleInit._ensureInit(); return new(_adapter); } }`,
+      `${bodyIndent}{ get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
     );
     this.lines.push("");
 
-    // _initAdapter method.
-    this.lines.push(`${bodyIndent}internal static void _initAdapter()`);
-    this.lines.push(`${bodyIndent}{`);
+    this.lines.push(`${indent}}`);
+  }
+
+  private writeModuleInitBuilder(
+    record: RecordLocation,
+    indentLevel: number,
+  ): void {
+    const indent = "    ".repeat(indentLevel);
+    const bodyIndent = "    ".repeat(indentLevel + 1);
+    const name = getTypeName(record);
+    const builderName = `${name}_builder`;
+    const fqName = this.getFullyQualifiedTypeName(record);
+    const fieldInfos = this.computeFieldInfos(record, name);
+
+    this.lines.push(`${indent}private sealed class ${builderName}`);
+    this.lines.push(`${indent}{`);
+    for (const { field, propertyName } of fieldInfos) {
+      const fieldType = this.typeSpeller.getCsharpFieldType(field);
+      const defaultExpr = this.typeSpeller.getFieldDefaultExpr(field);
+      this.lines.push(
+        `${bodyIndent}public ${fieldType} ${propertyName} { get; set; } = ${defaultExpr};`,
+      );
+    }
+    this.lines.push(
+      `${bodyIndent}public global::SkirClient.Internal.UnrecognizedFields<${fqName}>? _unrecognized { get; set; } = null;`,
+    );
+    this.lines.push(`${indent}}`);
+    this.lines.push("");
+  }
+
+  private writeModuleInitAdapterFields(
+    record: RecordLocation,
+    indentLevel: number,
+  ): void {
+    const indent = "    ".repeat(indentLevel);
+    const bodyIndent = "    ".repeat(indentLevel + 1);
+    const name = getTypeName(record);
+
+    if (record.record.recordType === "struct") {
+      const builderName = `${name}_builder`;
+      const fqName = this.getFullyQualifiedTypeName(record);
+      const qualifiedName = record.recordAncestors
+        .map((r) => r.name.text)
+        .join(".");
+      const modulePath = record.modulePath;
+      const fieldInfos = this.computeFieldInfos(record, name);
+      const fieldDefaults = fieldInfos.map(({ field, propertyName }) => ({
+        propertyName,
+        defaultExpr: this.typeSpeller.getFieldDefaultExpr(field),
+      }));
+      const newBuilderLambda = `() => new ${builderName}()`;
+      const buildFields = fieldDefaults
+        .map((f) => `${f.propertyName} = b.${f.propertyName}`)
+        .join(", ");
+      const buildInitExpr = buildFields
+        ? `b => new ${name} { ${buildFields}, _unrecognized = b._unrecognized }`
+        : `b => new ${name} { _unrecognized = b._unrecognized }`;
+      const structDoc = this.getDocText(record.record.doc);
+
+      this.lines.push(
+        `${indent}private static readonly global::SkirClient.Internal.StructAdapter<${fqName}, ${builderName}> ${name}_Adapter = new(`,
+      );
+      this.lines.push(`${bodyIndent}${name}.Default,`);
+      this.lines.push(`${bodyIndent}${JSON.stringify(modulePath)},`);
+      this.lines.push(`${bodyIndent}${JSON.stringify(qualifiedName)},`);
+      this.lines.push(`${bodyIndent}${JSON.stringify(structDoc)},`);
+      this.lines.push(`${bodyIndent}${newBuilderLambda},`);
+      this.lines.push(`${bodyIndent}${buildInitExpr},`);
+      this.lines.push(`${bodyIndent}x => x._unrecognized,`);
+      this.lines.push(`${bodyIndent}(b, v) => b._unrecognized = v`);
+      this.lines.push(`${indent});`);
+      this.lines.push(
+        `${indent}public static readonly global::SkirClient.Serializer<${fqName}> ${name}_Serializer = new(${name}_Adapter);`,
+      );
+      this.lines.push("");
+      return;
+    }
+
+    const fqBase = this.getFullyQualifiedTypeName(record);
+    const qualifiedName = record.recordAncestors
+      .map((r) => r.name.text)
+      .join(".");
+    const modulePath = record.modulePath;
+    const enumDoc = this.getDocText(record.record.doc);
+
+    this.lines.push(
+      `${indent}private static readonly global::SkirClient.Internal.EnumAdapter<${fqBase}> ${name}_Adapter = new(`,
+    );
+    this.lines.push(`${bodyIndent}${name}._getKindOrdinalForAdapter,`);
+    this.lines.push(`${bodyIndent}${name}._wrapUnrecognizedForAdapter,`);
+    this.lines.push(`${bodyIndent}${name}._getUnrecognizedForAdapter,`);
+    this.lines.push(`${bodyIndent}${fqBase}.Unknown,`);
+    this.lines.push(`${bodyIndent}${JSON.stringify(modulePath)},`);
+    this.lines.push(`${bodyIndent}${JSON.stringify(qualifiedName)},`);
+    this.lines.push(`${bodyIndent}${JSON.stringify(enumDoc)}`);
+    this.lines.push(`${indent});`);
+    this.lines.push(
+      `${indent}public static readonly global::SkirClient.Serializer<${fqBase}> ${name}_Serializer = new(${name}_Adapter);`,
+    );
+    this.lines.push("");
+  }
+
+  private writeModuleInitAdapterInit(
+    record: RecordLocation,
+    indentLevel: number,
+  ): void {
+    const indent = "    ".repeat(indentLevel);
+    const name = getTypeName(record);
+
+    if (record.record.recordType === "struct") {
+      const fieldInfos = this.computeFieldInfos(record, name);
+      for (const removedNumber of record.record.removedNumbers) {
+        this.lines.push(
+          `${indent}${name}_Adapter.AddRemovedNumber(${removedNumber});`,
+        );
+      }
+
+      for (const { field, propertyName } of fieldInfos) {
+        const serExpr = this.typeSpeller.getSerializerExpr(
+          field.type!,
+          true,
+          field.isRecursive,
+        );
+        const getter = this.makeStructFieldGetter(field, propertyName);
+        const setter = this.makeStructFieldSetter(field, propertyName);
+        this.lines.push(
+          `${indent}${name}_Adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr}, ${getter}, ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
+        );
+      }
+
+      this.lines.push(`${indent}${name}_Adapter.Finalize_();`);
+      return;
+    }
+
+    const fqBase = this.getFullyQualifiedTypeName(record);
+    const variantInfos = record.record.fields.map((v) => ({
+      variant: v,
+      memberName: toVariantTypeName(v),
+      prefixedName: convertCase(v.name.text, "UpperCamel"),
+    }));
 
     for (const removedNumber of record.record.removedNumbers) {
       this.lines.push(
-        `${body2Indent}_adapter.AddRemovedNumber(${removedNumber});`,
+        `${indent}${name}_Adapter.AddRemovedNumber(${removedNumber});`,
       );
     }
 
@@ -699,18 +765,16 @@ class CsharpSourceFileGenerator {
         const payloadCsharpType = this.typeSpeller.getCsharpType(variant.type);
         const serExpr = this.typeSpeller.getSerializerExpr(variant.type, true);
         this.lines.push(
-          `${body2Indent}_adapter.AddWrapperVariant<${payloadCsharpType}>(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${serExpr}, v => ${fqBase}.Wrap${prefixedName}(v), x => x.As${prefixedName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
+          `${indent}${name}_Adapter.AddWrapperVariant<${payloadCsharpType}>(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${serExpr}, v => ${fqBase}.Wrap${prefixedName}(v), x => x.As${prefixedName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       } else {
         this.lines.push(
-          `${body2Indent}_adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${fqBase}.${memberName}, ${JSON.stringify(this.getDocText(variant.doc))});`,
+          `${indent}${name}_Adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${fqBase}.${memberName}, ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       }
     });
 
-    this.lines.push(`${body2Indent}_adapter.Finalize_();`);
-    this.lines.push(`${bodyIndent}}`);
-    this.lines.push(`${indent}}`);
+    this.lines.push(`${indent}${name}_Adapter.Finalize_();`);
   }
 
   /**

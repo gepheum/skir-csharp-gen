@@ -199,9 +199,10 @@ export class TypeSpeller {
         const ns = modulePathToNamespace(loc.modulePath);
         const cname = getTypeName(loc);
         const fqn = `global::${ns}.${cname}`;
-        return initCtx
-          ? `new global::SkirClient.Serializer<${fqn}>(${fqn}._adapter)`
-          : `${fqn}.Serializer`;
+        if (initCtx && loc.modulePath === this.modulePath) {
+          return `_ModuleInit.${cname}_Serializer`;
+        }
+        return `${fqn}.Serializer`;
       }
       case "array": {
         const itemExpr = this.getSerializerExprInner(type.item, initCtx);
