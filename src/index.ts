@@ -382,17 +382,6 @@ class CsharpSourceFileGenerator {
       this.lines.push("");
     }
 
-    const usedMethodNames = new Set<string>([
-      "Default",
-      "Serializer",
-      "InitAdapter_",
-      "_adapter",
-      "_adapterSerializer",
-      "_unrecognized",
-      "Builder_",
-      ...keyedArrayIndexers.map((k) => k.indexerName),
-      ...fieldInfos.map((f) => f.propertyName),
-    ]);
     for (const { field, propertyName } of fieldInfos) {
       if (!field.type || field.type.kind !== "array" || !field.type.key) {
         continue;
@@ -432,21 +421,8 @@ class CsharpSourceFileGenerator {
       const itemDefaultExpr = this.typeSpeller.getDefaultExpr(field.type.item);
       const itemOptionalType = `${itemType}?`;
       const itemIndexerRef = `${this.getFullyQualifiedTypeName(itemRecord)}.${itemIndexer.indexerName}`;
-
-      let findByKeyName = `${propertyName}_FindByKey`;
-      while (usedMethodNames.has(findByKeyName) || findByKeyName === name) {
-        findByKeyName = `${findByKeyName}_`;
-      }
-      usedMethodNames.add(findByKeyName);
-
-      let findByKeyOrDefaultName = `${propertyName}_FindByKeyOrDefault`;
-      while (
-        usedMethodNames.has(findByKeyOrDefaultName) ||
-        findByKeyOrDefaultName === name
-      ) {
-        findByKeyOrDefaultName = `${findByKeyOrDefaultName}_`;
-      }
-      usedMethodNames.add(findByKeyOrDefaultName);
+      const findByKeyName = `${propertyName}_FindByKey`;
+      const findByKeyOrDefaultName = `${propertyName}_FindByKeyOrDefault`;
 
       this.lines.push(
         `${bodyIndent}public ${itemOptionalType} ${findByKeyName}(${keyType} key)`,
