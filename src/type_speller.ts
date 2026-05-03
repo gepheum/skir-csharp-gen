@@ -143,7 +143,7 @@ export class TypeSpeller {
 
   /**
    * Returns a C# expression for the serializer of `type`.
-   * In `initCtx` (called from InitAdapter_), struct/enum types return their `_adapter`
+   * In `initCtx` (called from Internal_InitAdapter), struct/enum types return their `Internal_Adapter`
    * field directly rather than calling `.Serializer` (which would trigger init recursively).
    */
   getSerializerExpr(
@@ -200,7 +200,7 @@ export class TypeSpeller {
         const cname = getTypeName(loc);
         const fqn = `global::${ns}.${cname}`;
         return initCtx
-          ? `new global::SkirClient.Serializer<${fqn}>(${fqn}._adapter)`
+          ? `new global::SkirClient.Serializer<${fqn}>(${fqn}.Internal_Adapter)`
           : `${fqn}.Serializer`;
       }
       case "array": {
