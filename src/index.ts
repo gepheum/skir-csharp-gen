@@ -1,4 +1,5 @@
 // TODO: verify no name conflict between module and class name (maybe lowercased names)???
+//   YES TO SUGGESTIONS
 // TODO: toJson or toJsonCode
 // Formatting...
 
@@ -121,7 +122,7 @@ class CsharpSourceFileGenerator {
       this.lines.push("// Module initialization");
       this.lines.push(`// ${"=".repeat(76)}`);
       this.lines.push("");
-      this.lines.push("internal static class _ModuleInit");
+      this.lines.push("file static class _ModuleInit");
       this.lines.push("{");
       this.lines.push(
         "    private static readonly global::System.Lazy<bool> _lazy = new(() =>",
