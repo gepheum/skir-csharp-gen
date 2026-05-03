@@ -1,18 +1,24 @@
 // TODO: verify no name conflict between module and class name???
 // KeyedArrays
 // Formatting...
+/// Test that we can use `with`
 
 import {
   convertCase,
   type CodeGenerator,
   type Constant,
   type Field,
+  type FieldPath,
   type Method,
   type Module,
+  type PrimitiveType,
   type RecordKey,
   type RecordLocation,
+  type ResolvedRecordRef,
+  type ResolvedType,
 } from "skir-internal";
 import { z } from "zod";
+import { KeyedArrayContext } from "./keyed_array_context.js";
 import {
   getTypeName,
   modulePathToCsharpPath,
@@ -32,6 +38,10 @@ class CsharpCodeGenerator implements CodeGenerator<Config> {
 
   generateCode(input: CodeGenerator.Input<Config>): CodeGenerator.Output {
     const outputFiles: CodeGenerator.OutputFile[] = [];
+    const keyedArrayContext = new KeyedArrayContext(
+      input.modules,
+      input.recordMap,
+    );
     for (const module of input.modules) {
       outputFiles.push({
         path: modulePathToCsharpPath(module.path),
@@ -39,6 +49,7 @@ class CsharpCodeGenerator implements CodeGenerator<Config> {
           module,
           modulePathToNamespace(module.path),
           input.recordMap,
+          keyedArrayContext,
         ).generate(),
       });
     }
@@ -50,11 +61,16 @@ class CsharpCodeGenerator implements CodeGenerator<Config> {
 class CsharpSourceFileGenerator {
   private readonly lines: string[] = [];
   private readonly typeSpeller: TypeSpeller;
+  private readonly fieldNameMapCache = new Map<
+    RecordKey,
+    Map<string, string>
+  >();
 
   constructor(
     private readonly module: Module,
     private readonly namespace: string,
     recordMap: ReadonlyMap<RecordKey, RecordLocation>,
+    private readonly keyedArrayContext: KeyedArrayContext,
   ) {
     this.typeSpeller = new TypeSpeller(recordMap, module.path);
   }
@@ -351,6 +367,42 @@ class CsharpSourceFileGenerator {
       `${bodyIndent}{ get { ModuleInit_.EnsureInit(); return _adapterSerializer; } }`,
     );
     this.lines.push("");
+
+    const keyedArraySpecs =
+      this.keyedArrayContext.getKeySpecsForItemStruct(record);
+    if (keyedArraySpecs.length > 0) {
+      const usedIndexerNames = new Set<string>([
+        "Default",
+        "Serializer",
+        "InitAdapter_",
+        "_adapter",
+        "_adapterSerializer",
+        "_unrecognized",
+        "Builder_",
+      ]);
+      for (const { propertyName } of fieldInfos) {
+        usedIndexerNames.add(propertyName);
+      }
+
+      for (const spec of keyedArraySpecs) {
+        const keyType = this.getCsharpMapKeyType(spec.fieldPath.keyType);
+        const keySelector = this.getKeySelectorLambda(record, spec.fieldPath);
+        if (!keyType || !keySelector) {
+          continue;
+        }
+
+        let indexerName = spec.specName;
+        while (usedIndexerNames.has(indexerName) || indexerName === name) {
+          indexerName = `${indexerName}_`;
+        }
+        usedIndexerNames.add(indexerName);
+
+        this.lines.push(
+          `${bodyIndent}public static readonly global::SkirClient.Internal.Indexer<${fqName}, ${keyType}> ${indexerName} = new(${keySelector});`,
+        );
+      }
+      this.lines.push("");
+    }
 
     // InitAdapter_ method.
     this.lines.push(`${bodyIndent}internal static void InitAdapter_()`);
@@ -666,6 +718,118 @@ class CsharpSourceFileGenerator {
   /** Returns a lambda expression `(b, v) => …` that sets the field value on the builder. */
   private makeStructFieldSetter(_field: Field, propertyName: string): string {
     return `(b, v) => b.${propertyName} = v`;
+  }
+
+  private getStructFieldNameMap(
+    structRecord: RecordLocation,
+  ): ReadonlyMap<string, string> {
+    const cached = this.fieldNameMapCache.get(structRecord.record.key);
+    if (cached) {
+      return cached;
+    }
+
+    const map = new Map<string, string>();
+    const typeName = getTypeName(structRecord);
+    for (const { field, propertyName } of this.computeFieldInfos(
+      structRecord,
+      typeName,
+    )) {
+      map.set(field.name.text, propertyName);
+    }
+    this.fieldNameMapCache.set(structRecord.record.key, map);
+    return map;
+  }
+
+  private getCsharpMapKeyType(
+    keyType: PrimitiveType | ResolvedRecordRef,
+  ): string | null {
+    if (keyType.kind === "primitive") {
+      switch (keyType.primitive) {
+        case "bool":
+          return "bool";
+        case "int32":
+          return "int";
+        case "int64":
+          return "long";
+        case "hash64":
+          return "ulong";
+        case "timestamp":
+          return "global::System.DateTimeOffset";
+        case "string":
+          return "string";
+        case "float32":
+        case "float64":
+        case "bytes":
+          return null;
+      }
+    }
+
+    const recordLocation = this.typeSpeller.recordMap.get(keyType.key);
+    if (!recordLocation || recordLocation.record.recordType !== "enum") {
+      return null;
+    }
+    const enumType = this.typeSpeller.getCsharpType(keyType);
+    const enumTypeName = getTypeName(recordLocation);
+    const kindTypeName = enumTypeName === "KindType" ? "KindType_" : "KindType";
+    return `${enumType}.${kindTypeName}`;
+  }
+
+  private getKeySelectorLambda(
+    itemStruct: RecordLocation,
+    fieldPath: FieldPath,
+  ): string | null {
+    let selectorExpr = "item";
+    let currentRecord: RecordLocation | undefined = itemStruct;
+
+    for (const part of fieldPath.path) {
+      const partName = part.name.text;
+      if (!currentRecord) {
+        return null;
+      }
+
+      if (currentRecord.record.recordType === "enum") {
+        if (partName !== "kind") {
+          return null;
+        }
+        selectorExpr = `${selectorExpr}.Kind`;
+        currentRecord = undefined;
+        continue;
+      }
+
+      const fieldDecl = currentRecord.record.fields.find(
+        (field) => field.name.text === partName && field.type !== undefined,
+      );
+      if (!fieldDecl || !fieldDecl.type) {
+        return null;
+      }
+
+      const propertyName =
+        this.getStructFieldNameMap(currentRecord).get(partName) ??
+        convertCase(partName, "UpperCamel");
+      selectorExpr = `${selectorExpr}.${propertyName}`;
+
+      let nextType: ResolvedType = fieldDecl.type;
+      if (fieldDecl.isRecursive === "hard") {
+        selectorExpr = `${selectorExpr}.Value`;
+      } else if (fieldDecl.isRecursive === "via-optional") {
+        selectorExpr = `${selectorExpr}.Value`;
+        if (nextType.kind === "optional") {
+          nextType = nextType.other;
+        }
+      }
+
+      if (nextType.kind === "optional") {
+        nextType = nextType.other;
+      }
+
+      if (nextType.kind === "record") {
+        currentRecord = this.typeSpeller.recordMap.get(nextType.key);
+      } else {
+        currentRecord = undefined;
+      }
+    }
+
+    return `item => ${selectorExpr}`;
   }
 
   private getDocText(doc: unknown): string {
