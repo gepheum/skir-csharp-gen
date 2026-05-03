@@ -253,15 +253,17 @@ class CsharpSourceFileGenerator {
       : `b => new ${name} { _unrecognized = b._unrecognized }`;
     const structDoc = this.getDocText(record.record.doc);
     this.lines.push(
-      `${bodyIndent}private static readonly global::SkirClient.Internal.StructAdapter<${fqName}, Builder_> _adapter =`,
+      `${bodyIndent}private static readonly global::SkirClient.Internal.StructAdapter<${fqName}, Builder_> _adapter = new(`,
     );
-    this.lines.push(
-      `${bodyIndent}    new(${name}.Default, ${JSON.stringify(modulePath)}, ${JSON.stringify(qualifiedName)}, ${JSON.stringify(structDoc)},`,
-    );
+    this.lines.push(`${bodyIndent}        ${name}.Default,`);
+    this.lines.push(`${bodyIndent}        ${JSON.stringify(modulePath)},`);
+    this.lines.push(`${bodyIndent}        ${JSON.stringify(qualifiedName)},`);
+    this.lines.push(`${bodyIndent}        ${JSON.stringify(structDoc)},`);
     this.lines.push(`${bodyIndent}        ${newBuilderLambda},`);
     this.lines.push(`${bodyIndent}        ${buildLambda},`);
     this.lines.push(`${bodyIndent}        x => x._unrecognized,`);
-    this.lines.push(`${bodyIndent}        (b, v) => b._unrecognized = v);`);
+    this.lines.push(`${bodyIndent}        (b, v) => b._unrecognized = v`);
+    this.lines.push(`${bodyIndent}    );`);
     this.lines.push(
       `${bodyIndent}internal static readonly global::SkirClient.Serializer<${fqName}> _adapterSerializer = new(_adapter);`,
     );
@@ -476,9 +478,8 @@ class CsharpSourceFileGenerator {
     // Adapter field.
     const enumDoc = this.getDocText(record.record.doc);
     this.lines.push(
-      `${bodyIndent}internal static readonly global::SkirClient.Internal.EnumAdapter<${fqBase}> _adapter =`,
+      `${bodyIndent}internal static readonly global::SkirClient.Internal.EnumAdapter<${fqBase}> _adapter = new(`,
     );
-    this.lines.push(`${bodyIndent}    new(`);
     this.lines.push(`${body2Indent}x => x.${kindMemberName} switch`);
     this.lines.push(`${body2Indent}{`);
     this.lines.push(`${body3Indent}${fqBase}.${kindTypeName}.Unknown => 0,`);
@@ -502,7 +503,8 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${body2Indent}${fqBase}.Unknown,`);
     this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
     this.lines.push(`${body2Indent}${JSON.stringify(qualifiedName)},`);
-    this.lines.push(`${body2Indent}${JSON.stringify(enumDoc)});`);
+    this.lines.push(`${body2Indent}${JSON.stringify(enumDoc)}`);
+    this.lines.push(`${bodyIndent});`);
     this.lines.push(
       `${bodyIndent}internal static readonly global::SkirClient.Serializer<${fqBase}> _adapterSerializer = new(_adapter);`,
     );
