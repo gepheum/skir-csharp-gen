@@ -253,7 +253,7 @@ class CsharpSourceFileGenerator {
       : `b => new ${name} { _unrecognized = b._unrecognized }`;
     const structDoc = this.getDocText(record.record.doc);
     this.lines.push(
-      `${bodyIndent}private static readonly global::SkirClient.StructAdapter<${fqName}, Builder_> _adapter =`,
+      `${bodyIndent}private static readonly global::SkirClient.Internal.StructAdapter<${fqName}, Builder_> _adapter =`,
     );
     this.lines.push(
       `${bodyIndent}    new(${name}.Default, ${JSON.stringify(modulePath)}, ${JSON.stringify(qualifiedName)}, ${JSON.stringify(structDoc)},`,
@@ -489,7 +489,7 @@ class CsharpSourceFileGenerator {
     // Adapter field.
     const enumDoc = this.getDocText(record.record.doc);
     this.lines.push(
-      `${bodyIndent}internal static readonly global::SkirClient.EnumAdapter<${fqBase}> _adapter =`,
+      `${bodyIndent}internal static readonly global::SkirClient.Internal.EnumAdapter<${fqBase}> _adapter =`,
     );
     this.lines.push(`${bodyIndent}    new(`);
     this.lines.push(`${body2Indent}x => x.kind switch`);
