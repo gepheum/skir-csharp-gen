@@ -121,7 +121,7 @@ class CsharpSourceFileGenerator {
       this.lines.push("// Module initialization");
       this.lines.push(`// ${"=".repeat(76)}`);
       this.lines.push("");
-      this.lines.push("internal static class Internal_ModuleInit");
+      this.lines.push("internal static class _ModuleInit");
       this.lines.push("{");
       this.lines.push(
         "    private static readonly global::System.Lazy<bool> _lazy = new(() =>",
@@ -129,12 +129,12 @@ class CsharpSourceFileGenerator {
       this.lines.push("    {");
       for (const record of moduleRecords) {
         const fqn = this.getFullyQualifiedTypeName(record);
-        this.lines.push(`        ${fqn}.Internal_InitAdapter();`);
+        this.lines.push(`        ${fqn}._initAdapter();`);
       }
       this.lines.push("        return true;");
       this.lines.push("    });");
       this.lines.push(
-        "    internal static void Internal_EnsureInit() => _ = _lazy.Value;",
+        "    internal static void _ensureInit() => _ = _lazy.Value;",
       );
       this.lines.push("}");
     }
@@ -295,10 +295,10 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${indent}public readonly record struct ${name}`);
     this.lines.push(`${indent}{`);
 
-    // Pre-compute property names to reuse in both field declarations and Internal_InitAdapter.
+    // Pre-compute property names to reuse in both field declarations and _initAdapter.
     const fieldInfos = this.computeFieldInfos(record, name);
 
-    // Collect field info for Default init, Internal_Builder, and the build lambda.
+    // Collect field info for Default init, _Builder, and the build lambda.
     const fieldDefaults: Array<{ propertyName: string; defaultExpr: string }> =
       [];
 
@@ -329,7 +329,7 @@ class CsharpSourceFileGenerator {
     this.lines.push("");
 
     // Nested builder class.
-    this.lines.push(`${bodyIndent}private sealed class Internal_Builder`);
+    this.lines.push(`${bodyIndent}private sealed class _Builder`);
     this.lines.push(`${bodyIndent}{`);
     for (const { field, propertyName } of fieldInfos) {
       const fieldType = this.typeSpeller.getCsharpFieldType(field);
@@ -345,7 +345,7 @@ class CsharpSourceFileGenerator {
     this.lines.push("");
 
     // Adapter field.
-    const newBuilderLambda = "() => new Internal_Builder()";
+    const newBuilderLambda = "() => new _Builder()";
     const buildFields = fieldDefaults
       .map((f) => `${f.propertyName} = b.${f.propertyName}`)
       .join(", ");
@@ -354,7 +354,7 @@ class CsharpSourceFileGenerator {
       : `b => new ${name} { _unrecognized = b._unrecognized }`;
     const structDoc = this.getDocText(record.record.doc);
     this.lines.push(
-      `${bodyIndent}private static readonly global::SkirClient.Internal.StructAdapter<${fqName}, Internal_Builder> _adapter = new(`,
+      `${bodyIndent}private static readonly global::SkirClient.Internal.StructAdapter<${fqName}, _Builder> _structAdapter = new(`,
     );
     this.lines.push(`${body2Indent}${name}.Default,`);
     this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
@@ -366,14 +366,14 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${body2Indent}(b, v) => b._unrecognized = v`);
     this.lines.push(`${bodyIndent});`);
     this.lines.push(
-      `${bodyIndent}internal static global::SkirClient.Internal.ITypeAdapter<${fqName}> Internal_Adapter => _adapter;`,
+      `${bodyIndent}internal static global::SkirClient.Internal.ITypeAdapter<${fqName}> _adapter => _structAdapter;`,
     );
     // Serializer property.
     this.lines.push(
       `${bodyIndent}public static global::SkirClient.Serializer<${fqName}> Serializer`,
     );
     this.lines.push(
-      `${bodyIndent}{ get { Internal_ModuleInit.Internal_EnsureInit(); return new(Internal_Adapter); } }`,
+      `${bodyIndent}{ get { _ModuleInit._ensureInit(); return new(_adapter); } }`,
     );
     this.lines.push("");
 
@@ -450,13 +450,13 @@ class CsharpSourceFileGenerator {
       this.lines.push("");
     }
 
-    // Internal_InitAdapter method.
-    this.lines.push(`${bodyIndent}internal static void Internal_InitAdapter()`);
+    // _initAdapter method.
+    this.lines.push(`${bodyIndent}internal static void _initAdapter()`);
     this.lines.push(`${bodyIndent}{`);
 
     for (const removedNumber of record.record.removedNumbers) {
       this.lines.push(
-        `${body2Indent}_adapter.AddRemovedNumber(${removedNumber});`,
+        `${body2Indent}_structAdapter.AddRemovedNumber(${removedNumber});`,
       );
     }
 
@@ -469,11 +469,11 @@ class CsharpSourceFileGenerator {
       const getter = this.makeStructFieldGetter(field, propertyName);
       const setter = this.makeStructFieldSetter(field, propertyName);
       this.lines.push(
-        `${body2Indent}_adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr}, ${getter}, ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
+        `${body2Indent}_structAdapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr}, ${getter}, ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
       );
     }
 
-    this.lines.push(`${body2Indent}_adapter.Finalize_();`);
+    this.lines.push(`${body2Indent}_structAdapter.Finalize_();`);
     this.lines.push(`${bodyIndent}}`);
     this.lines.push(`${indent}}`);
   }
@@ -498,7 +498,7 @@ class CsharpSourceFileGenerator {
       .join(".");
     const modulePath = record.modulePath;
 
-    // Pre-compute variant type names to reuse in declarations and Internal_InitAdapter.
+    // Pre-compute variant type names to reuse in declarations and _initAdapter.
     const variantInfos = variants.map((v) => ({
       variant: v,
       memberName: toVariantTypeName(v),
@@ -646,7 +646,7 @@ class CsharpSourceFileGenerator {
     // Adapter field.
     const enumDoc = this.getDocText(record.record.doc);
     this.lines.push(
-      `${bodyIndent}internal static readonly global::SkirClient.Internal.EnumAdapter<${fqBase}> Internal_Adapter = new(`,
+      `${bodyIndent}internal static readonly global::SkirClient.Internal.EnumAdapter<${fqBase}> _adapter = new(`,
     );
     this.lines.push(`${body2Indent}x => x.${kindMemberName} switch`);
     this.lines.push(`${body2Indent}{`);
@@ -678,17 +678,17 @@ class CsharpSourceFileGenerator {
       `${bodyIndent}public static global::SkirClient.Serializer<${fqBase}> Serializer`,
     );
     this.lines.push(
-      `${bodyIndent}{ get { Internal_ModuleInit.Internal_EnsureInit(); return new(Internal_Adapter); } }`,
+      `${bodyIndent}{ get { _ModuleInit._ensureInit(); return new(_adapter); } }`,
     );
     this.lines.push("");
 
-    // Internal_InitAdapter method.
-    this.lines.push(`${bodyIndent}internal static void Internal_InitAdapter()`);
+    // _initAdapter method.
+    this.lines.push(`${bodyIndent}internal static void _initAdapter()`);
     this.lines.push(`${bodyIndent}{`);
 
     for (const removedNumber of record.record.removedNumbers) {
       this.lines.push(
-        `${body2Indent}Internal_Adapter.AddRemovedNumber(${removedNumber});`,
+        `${body2Indent}_adapter.AddRemovedNumber(${removedNumber});`,
       );
     }
 
@@ -698,23 +698,23 @@ class CsharpSourceFileGenerator {
         const payloadCsharpType = this.typeSpeller.getCsharpType(variant.type);
         const serExpr = this.typeSpeller.getSerializerExpr(variant.type, true);
         this.lines.push(
-          `${body2Indent}Internal_Adapter.AddWrapperVariant<${payloadCsharpType}>(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${serExpr}, v => ${fqBase}.Wrap${prefixedName}(v), x => x.As${prefixedName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
+          `${body2Indent}_adapter.AddWrapperVariant<${payloadCsharpType}>(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${serExpr}, v => ${fqBase}.Wrap${prefixedName}(v), x => x.As${prefixedName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       } else {
         this.lines.push(
-          `${body2Indent}Internal_Adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${fqBase}.${memberName}, ${JSON.stringify(this.getDocText(variant.doc))});`,
+          `${body2Indent}_adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${fqBase}.${memberName}, ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       }
     });
 
-    this.lines.push(`${body2Indent}Internal_Adapter.Finalize_();`);
+    this.lines.push(`${body2Indent}_adapter.Finalize_();`);
     this.lines.push(`${bodyIndent}}`);
     this.lines.push(`${indent}}`);
   }
 
   /**
    * Pre-computes (field, propertyName) pairs for a struct, applying the same
-   * collision-avoidance logic in both the field declaration and Internal_InitAdapter.
+   * collision-avoidance logic in both the field declaration and _initAdapter.
    */
   private computeFieldInfos(
     record: RecordLocation,

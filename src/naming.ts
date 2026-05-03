@@ -103,7 +103,7 @@ const ENUM_RESERVED_MEMBER_NAMES = new Set<string>([
   "Visitor",
   "Accept",
   "Serializer",
-  "Internal_InitAdapter",
+  "_initAdapter",
   "Adapter",
   "AdapterSerializer",
   ...RECORD_SYNTHESIZED_MEMBERS,
