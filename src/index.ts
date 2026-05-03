@@ -201,14 +201,8 @@ class CsharpSourceFileGenerator {
     this.lines.push("public static class Methods");
     this.lines.push("{");
 
-    const usedNames = new Set<string>(["Methods"]);
-
     for (const method of methods) {
-      let propName = convertCase(method.name.text, "UpperCamel");
-      while (usedNames.has(propName)) {
-        propName = `${propName}_`;
-      }
-      usedNames.add(propName);
+      const propName = convertCase(method.name.text, "UpperCamel");
 
       const requestType = this.typeSpeller.getCsharpType(method.requestType);
       const responseType = this.typeSpeller.getCsharpType(method.responseType);
@@ -368,11 +362,7 @@ class CsharpSourceFileGenerator {
     );
     this.lines.push("");
 
-    const keyedArrayIndexers = this.computeStructIndexerInfos(
-      record,
-      name,
-      fieldInfos,
-    );
+    const keyedArrayIndexers = this.computeStructIndexerInfos(record);
     if (keyedArrayIndexers.length > 0) {
       for (const indexer of keyedArrayIndexers) {
         this.lines.push(
@@ -402,13 +392,7 @@ class CsharpSourceFileGenerator {
         continue;
       }
 
-      const itemTypeName = getTypeName(itemRecord);
-      const itemFieldInfos = this.computeFieldInfos(itemRecord, itemTypeName);
-      const itemIndexers = this.computeStructIndexerInfos(
-        itemRecord,
-        itemTypeName,
-        itemFieldInfos,
-      );
+      const itemIndexers = this.computeStructIndexerInfos(itemRecord);
       const keyExtractor = this.getFieldPathExtractor(keySpec.fieldPath);
       const itemIndexer = itemIndexers.find(
         (indexer) => indexer.keyExtractor === keyExtractor,
@@ -791,11 +775,7 @@ class CsharpSourceFileGenerator {
     return fieldPath.path.map((part) => part.name.text).join(".");
   }
 
-  private computeStructIndexerInfos(
-    record: RecordLocation,
-    typeName: string,
-    fieldInfos: ReadonlyArray<{ field: Field; propertyName: string }>,
-  ): Array<{
+  private computeStructIndexerInfos(record: RecordLocation): Array<{
     indexerName: string;
     keyType: string;
     keySelector: string;
@@ -807,16 +787,6 @@ class CsharpSourceFileGenerator {
       return [];
     }
 
-    const usedIndexerNames = new Set<string>([
-      "Default",
-      "Serializer",
-      "InitAdapter_",
-      "_adapter",
-      "_adapterSerializer",
-      "_unrecognized",
-      "Builder_",
-      ...fieldInfos.map((f) => f.propertyName),
-    ]);
     const result: Array<{
       indexerName: string;
       keyType: string;
@@ -831,11 +801,7 @@ class CsharpSourceFileGenerator {
         continue;
       }
 
-      let indexerName = spec.specName;
-      while (usedIndexerNames.has(indexerName) || indexerName === typeName) {
-        indexerName = `${indexerName}_`;
-      }
-      usedIndexerNames.add(indexerName);
+      const indexerName = spec.specName;
 
       result.push({
         indexerName,
