@@ -68,4 +68,7 @@ enum EnumWithNameConflictB {
   self;
   kind: string;
   kind_type: string;
+  foo: string;
+  wrap_foo;
+  is_foo;
 }

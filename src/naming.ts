@@ -92,6 +92,21 @@ const RECORD_SYNTHESIZED_MEMBERS = new Set<string>([
 
 const RESERVED_MEMBER_NAMES = new Set<string>(["DEFAULT"]);
 
+// Members synthesized inside generated enum record bodies.
+const ENUM_RESERVED_MEMBER_NAMES = new Set<string>([
+  "Unknown",
+  "Kind",
+  "KindType",
+  "KindType_",
+  "Visitor",
+  "Accept",
+  "Serializer",
+  "InitAdapter_",
+  "Adapter",
+  "AdapterSerializer",
+  ...RECORD_SYNTHESIZED_MEMBERS,
+]);
+
 function escapeIdentifier(name: string): string {
   return CSHARP_KEYWORDS.has(name) ? `${name}_` : name;
 }
@@ -160,12 +175,12 @@ export function toFieldPropertyName(
   return base;
 }
 
-export function toVariantTypeName(
-  variant: Field,
-  reservedNames: ReadonlySet<string>,
-): string {
+export function toVariantTypeName(variant: Field): string {
   let name = toTypeSegment(variant.name.text);
-  while (reservedNames.has(name)) {
+  if (ENUM_RESERVED_MEMBER_NAMES.has(name)) {
+    name = `${name}_`;
+  }
+  if (!variant.type && /^(wrap_|as_)/i.test(variant.name.text)) {
     name = `${name}_`;
   }
   return name;

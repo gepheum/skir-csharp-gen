@@ -327,26 +327,10 @@ class CsharpSourceFileGenerator {
       .join(".");
     const modulePath = record.modulePath;
 
-    // Reserved names synthesized inside enum bodies.
-    const reservedVariantNames = new Set<string>([
-      "Unknown",
-      kindTypeName,
-      kindPropertyName,
-      "Visitor",
-      "Accept",
-      "Serializer",
-      "InitAdapter_",
-      "_adapter",
-      "_adapterSerializer",
-      "kind",
-      "value",
-      name,
-    ]);
-
     // Pre-compute variant type names to reuse in declarations and InitAdapter_.
     const variantInfos = variants.map((v) => ({
       variant: v,
-      typeName: toVariantTypeName(v, reservedVariantNames),
+      typeName: toVariantTypeName(v),
     }));
 
     this.lines.push(`${indent}public sealed record ${name}`);
