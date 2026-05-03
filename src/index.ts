@@ -337,9 +337,8 @@ class CsharpSourceFileGenerator {
       "InitAdapter_",
       "_adapter",
       "_adapterSerializer",
-      "_kind",
-      "_value",
-      "_unrecognized",
+      "kind",
+      "value",
       name,
     ]);
 
@@ -357,54 +356,38 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${body2Indent}Unknown,`);
     variantInfos.forEach(({ variant }, i) => {
       const suffix = i < variantInfos.length - 1 ? "," : "";
-      const upperUnderscore = convertCase(
-        variant.name.text,
-        "UPPER_UNDERSCORE",
-      );
-      const kindName = variant.type
-        ? `${upperUnderscore}_WRAPPER`
-        : `${upperUnderscore}_CONST`;
+      const upperCamel = convertCase(variant.name.text, "UpperCamel");
+      const kindName = variant.type ? `${upperCamel}Wrapper` : upperCamel;
       this.lines.push(`${body2Indent}${kindName}${suffix}`);
     });
     this.lines.push(`${bodyIndent}}`);
     this.lines.push("");
 
-    this.lines.push(
-      `${bodyIndent}private ${kindTypeName} _kind { get; init; }`,
-    );
-    this.lines.push(`${bodyIndent}private object? _value { get; init; }`);
-    this.lines.push(
-      `${bodyIndent}private global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? _unrecognized { get; init; }`,
-    );
+    this.lines.push(`${bodyIndent}private ${kindTypeName} kind { get; init; }`);
+    this.lines.push(`${bodyIndent}private object? value { get; init; }`);
     this.lines.push("");
 
     this.lines.push(
-      `${bodyIndent}private ${name}(${kindTypeName} kind, object? value, global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? unrecognized)`,
+      `${bodyIndent}private ${name}(${kindTypeName} kind, object? value)`,
     );
     this.lines.push(`${bodyIndent}{`);
-    this.lines.push(`${body2Indent}_kind = kind;`);
-    this.lines.push(`${body2Indent}_value = value;`);
-    this.lines.push(`${body2Indent}_unrecognized = unrecognized;`);
+    this.lines.push(`${body2Indent}this.kind = kind;`);
+    this.lines.push(`${body2Indent}this.value = value;`);
     this.lines.push(`${bodyIndent}}`);
     this.lines.push("");
 
-    this.lines.push(
-      `${bodyIndent}public ${kindTypeName} VariantKind => _kind;`,
-    );
+    this.lines.push(`${bodyIndent}public ${kindTypeName} VariantKind => kind;`);
     this.lines.push("");
     this.lines.push(
-      `${bodyIndent}public static readonly ${fqBase} Unknown = new(${kindTypeName}.Unknown, null, null);`,
+      `${bodyIndent}public static readonly ${fqBase} Unknown = new(${kindTypeName}.Unknown, null);`,
     );
 
     for (const { variant, typeName } of variantInfos) {
       if (!variant.type) {
-        const upperUnderscore = convertCase(
-          variant.name.text,
-          "UPPER_UNDERSCORE",
-        );
-        const kindName = `${upperUnderscore}_CONST`;
+        const upperCamel = convertCase(variant.name.text, "UpperCamel");
+        const kindName = upperCamel;
         this.lines.push(
-          `${bodyIndent}public static readonly ${fqBase} ${typeName} = new(${kindTypeName}.${kindName}, null, null);`,
+          `${bodyIndent}public static readonly ${fqBase} ${typeName} = new(${kindTypeName}.${kindName}, null);`,
         );
       }
     }
@@ -418,27 +401,21 @@ class CsharpSourceFileGenerator {
         continue;
       }
       const payloadType = this.typeSpeller.getCsharpType(variant.type);
-      const upperUnderscore = convertCase(
-        variant.name.text,
-        "UPPER_UNDERSCORE",
-      );
-      const kindName = `${upperUnderscore}_WRAPPER`;
+      const kindName = `${convertCase(variant.name.text, "UpperCamel")}Wrapper`;
 
       this.lines.push(
-        `${bodyIndent}public static ${fqBase} Wrap${typeName}(${payloadType} value) => new(${kindTypeName}.${kindName}, value, null);`,
+        `${bodyIndent}public static ${fqBase} Wrap${typeName}(${payloadType} value) => new(${kindTypeName}.${kindName}, value);`,
       );
       this.lines.push(
-        `${bodyIndent}public bool Is${typeName}() => _kind == ${kindTypeName}.${kindName};`,
+        `${bodyIndent}public bool Is${typeName}() => kind == ${kindTypeName}.${kindName};`,
       );
       this.lines.push(`${bodyIndent}public ${payloadType} As${typeName}()`);
       this.lines.push(`${bodyIndent}{`);
+      this.lines.push(`${body2Indent}if (kind != ${kindTypeName}.${kindName})`);
       this.lines.push(
-        `${body2Indent}if (_kind != ${kindTypeName}.${kindName})`,
+        `${body3Indent}throw new global::System.InvalidOperationException("kind=" + kind.ToString());`,
       );
-      this.lines.push(
-        `${body3Indent}throw new global::System.InvalidOperationException("kind=" + _kind.ToString());`,
-      );
-      this.lines.push(`${body2Indent}return (${payloadType})_value!;`);
+      this.lines.push(`${body2Indent}return (${payloadType})value!;`);
       this.lines.push(`${bodyIndent}}`);
       this.lines.push("");
     }
@@ -459,34 +436,51 @@ class CsharpSourceFileGenerator {
 
     this.lines.push(`${bodyIndent}public R Accept<R>(Visitor<R> visitor)`);
     this.lines.push(`${bodyIndent}{`);
-    this.lines.push(`${body2Indent}return _kind switch`);
+    this.lines.push(`${body2Indent}return kind switch`);
     this.lines.push(`${body2Indent}{`);
     this.lines.push(
       `${body3Indent}${kindTypeName}.Unknown => visitor.OnUnknown(),`,
     );
-    variantInfos.forEach(({ variant, typeName }, i) => {
-      const upperUnderscore = convertCase(
-        variant.name.text,
-        "UPPER_UNDERSCORE",
-      );
-      const kindName = variant.type
-        ? `${upperUnderscore}_WRAPPER`
-        : `${upperUnderscore}_CONST`;
-      const isLast = i === variantInfos.length - 1;
+    variantInfos.forEach(({ variant, typeName }) => {
+      const upperCamel = convertCase(variant.name.text, "UpperCamel");
+      const kindName = variant.type ? `${upperCamel}Wrapper` : upperCamel;
       if (variant.type) {
-        const suffix = isLast ? "" : ",";
         this.lines.push(
-          `${body3Indent}${kindTypeName}.${kindName} => visitor.On${typeName}(As${typeName}())${suffix}`,
+          `${body3Indent}${kindTypeName}.${kindName} => visitor.On${typeName}(As${typeName}()),`,
         );
       } else {
-        const suffix = isLast ? "" : ",";
         this.lines.push(
-          `${body3Indent}${kindTypeName}.${kindName} => visitor.On${typeName}()${suffix}`,
+          `${body3Indent}${kindTypeName}.${kindName} => visitor.On${typeName}(),`,
         );
       }
     });
+    this.lines.push(
+      `${body3Indent}_ => throw new global::System.InvalidOperationException("kind=" + kind.ToString())`,
+    );
     this.lines.push(`${body2Indent}};`);
     this.lines.push(`${bodyIndent}}`);
+    this.lines.push("");
+
+    this.lines.push(`${bodyIndent}public bool Equals(${fqBase}? other)`);
+    this.lines.push(`${bodyIndent}{`);
+    this.lines.push(`${body2Indent}if (other is null) return false;`);
+    this.lines.push(
+      `${body2Indent}if (ReferenceEquals(this, other)) return true;`,
+    );
+    this.lines.push(`${body2Indent}if (kind != other.kind) return false;`);
+    this.lines.push(
+      `${body2Indent}if (kind == ${kindTypeName}.Unknown) return true;`,
+    );
+    this.lines.push(
+      `${body2Indent}return global::System.Collections.Generic.EqualityComparer<object?>.Default.Equals(value, other.value);`,
+    );
+    this.lines.push(`${bodyIndent}}`);
+    this.lines.push("");
+
+    this.lines.push(`${bodyIndent}public override int GetHashCode() =>`);
+    this.lines.push(
+      `${body2Indent}kind == ${kindTypeName}.Unknown ? 0 : global::System.HashCode.Combine(kind, value);`,
+    );
     this.lines.push("");
 
     // Adapter field.
@@ -495,28 +489,25 @@ class CsharpSourceFileGenerator {
       `${bodyIndent}internal static readonly global::SkirClient.EnumAdapter<${fqBase}> _adapter =`,
     );
     this.lines.push(`${bodyIndent}    new(`);
-    this.lines.push(`${body2Indent}x => x._kind switch`);
+    this.lines.push(`${body2Indent}x => x.kind switch`);
     this.lines.push(`${body2Indent}{`);
     this.lines.push(`${body3Indent}${fqBase}.${kindTypeName}.Unknown => 0,`);
     variantInfos.forEach(({ variant }, i) => {
-      const upperUnderscore = convertCase(
-        variant.name.text,
-        "UPPER_UNDERSCORE",
-      );
-      const kindName = variant.type
-        ? `${upperUnderscore}_WRAPPER`
-        : `${upperUnderscore}_CONST`;
-      const suffix = i === variantInfos.length - 1 ? "" : ",";
+      const upperCamel = convertCase(variant.name.text, "UpperCamel");
+      const kindName = variant.type ? `${upperCamel}Wrapper` : upperCamel;
       this.lines.push(
-        `${body3Indent}${fqBase}.${kindTypeName}.${kindName} => ${i + 1}${suffix}`,
+        `${body3Indent}${fqBase}.${kindTypeName}.${kindName} => ${i + 1},`,
       );
     });
+    this.lines.push(
+      `${body3Indent}_ => throw new global::System.InvalidOperationException("kind=" + x.kind.ToString())`,
+    );
     this.lines.push(`${body2Indent}},`);
     this.lines.push(
-      `${body2Indent}u => new(${fqBase}.${kindTypeName}.Unknown, null, u),`,
+      `${body2Indent}u => new(${fqBase}.${kindTypeName}.Unknown, u),`,
     );
     this.lines.push(
-      `${body2Indent}x => x._kind == ${fqBase}.${kindTypeName}.Unknown ? x._unrecognized : null,`,
+      `${body2Indent}x => x.kind == ${fqBase}.${kindTypeName}.Unknown ? x.value as global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> : null,`,
     );
     this.lines.push(`${body2Indent}${fqBase}.Unknown,`);
     this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
