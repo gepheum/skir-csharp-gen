@@ -1,7 +1,5 @@
 // TODO: verify no name conflict between module and class name (maybe lowercased names)???
 // TODO: toJson or toJsonCode
-// TODO: add internalPrefix to generated struct
-// TODO: I don't think you need _adapterSerializer
 // Formatting...
 
 import {
