@@ -178,7 +178,7 @@ public sealed class EnumTests
     // Visitor helpers
     // =========================================================================
 
-    private sealed class WeekdayNameVisitor : Weekday.Visitor<string>
+    private sealed class WeekdayNameVisitor : Weekday.IVisitor<string>
     {
         public string OnUnknown() => "Unknown";
         public string OnMonday() => "Monday";
@@ -190,7 +190,7 @@ public sealed class EnumTests
         public string OnSunday() => "Sunday";
     }
 
-    private sealed class JsonValueKindVisitor : JsonValue.Visitor<string>
+    private sealed class JsonValueKindVisitor : JsonValue.IVisitor<string>
     {
         public string OnUnknown() => "unknown";
         public string OnNull() => "null";

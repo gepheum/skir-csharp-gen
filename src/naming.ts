@@ -96,8 +96,10 @@ const RESERVED_MEMBER_NAMES = new Set<string>(["DEFAULT"]);
 const ENUM_RESERVED_MEMBER_NAMES = new Set<string>([
   "Unknown",
   "Kind",
+  "Kind_",
   "KindType",
   "KindType_",
+  "Value_",
   "Visitor",
   "Accept",
   "Serializer",
