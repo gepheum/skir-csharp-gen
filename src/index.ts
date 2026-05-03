@@ -62,10 +62,7 @@ class CsharpCodeGenerator implements CodeGenerator<Config> {
 // must not collide with.
 const GENERATED_MEMBER_NAMES = new Set<string>([
   "Default",
-  "DEFAULT",
   "Serializer",
-  "Internal_InitAdapter",
-  "Internal_Adapter",
   "_unrecognized",
 ]);
 
@@ -334,7 +331,7 @@ class CsharpSourceFileGenerator {
     this.lines.push("");
 
     // Nested builder class.
-    this.lines.push(`${bodyIndent}internal sealed class Internal_Builder`);
+    this.lines.push(`${bodyIndent}private sealed class Internal_Builder`);
     this.lines.push(`${bodyIndent}{`);
     for (const { field, propertyName } of fieldInfos) {
       const fieldType = this.typeSpeller.getCsharpFieldType(field);
@@ -359,7 +356,7 @@ class CsharpSourceFileGenerator {
       : `b => new ${name} { _unrecognized = b._unrecognized }`;
     const structDoc = this.getDocText(record.record.doc);
     this.lines.push(
-      `${bodyIndent}internal static readonly global::SkirClient.Internal.StructAdapter<${fqName}, Internal_Builder> Internal_Adapter = new(`,
+      `${bodyIndent}private static readonly global::SkirClient.Internal.StructAdapter<${fqName}, Internal_Builder> _adapter = new(`,
     );
     this.lines.push(`${body2Indent}${name}.Default,`);
     this.lines.push(`${body2Indent}${JSON.stringify(modulePath)},`);
@@ -370,6 +367,9 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${body2Indent}x => x._unrecognized,`);
     this.lines.push(`${body2Indent}(b, v) => b._unrecognized = v`);
     this.lines.push(`${bodyIndent});`);
+    this.lines.push(
+      `${bodyIndent}internal static global::SkirClient.Internal.ITypeAdapter<${fqName}> Internal_Adapter => _adapter;`,
+    );
     // Serializer property.
     this.lines.push(
       `${bodyIndent}public static global::SkirClient.Serializer<${fqName}> Serializer`,
@@ -458,7 +458,7 @@ class CsharpSourceFileGenerator {
 
     for (const removedNumber of record.record.removedNumbers) {
       this.lines.push(
-        `${body2Indent}Internal_Adapter.AddRemovedNumber(${removedNumber});`,
+        `${body2Indent}_adapter.AddRemovedNumber(${removedNumber});`,
       );
     }
 
@@ -471,11 +471,11 @@ class CsharpSourceFileGenerator {
       const getter = this.makeStructFieldGetter(field, propertyName);
       const setter = this.makeStructFieldSetter(field, propertyName);
       this.lines.push(
-        `${body2Indent}Internal_Adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr}, ${getter}, ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
+        `${body2Indent}_adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr}, ${getter}, ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
       );
     }
 
-    this.lines.push(`${body2Indent}Internal_Adapter.Finalize_();`);
+    this.lines.push(`${body2Indent}_adapter.Finalize_();`);
     this.lines.push(`${bodyIndent}}`);
     this.lines.push(`${indent}}`);
   }
