@@ -409,9 +409,6 @@ class CsharpSourceFileGenerator {
       this.lines.push(
         `${bodyIndent}public static ${fqBase} Wrap${typeName}(${payloadType} value) => new(${kindTypeName}.${kindName}, value);`,
       );
-      this.lines.push(
-        `${bodyIndent}public bool Is${typeName}() => kind == ${kindTypeName}.${kindName};`,
-      );
       this.lines.push(`${bodyIndent}public ${payloadType} As${typeName}()`);
       this.lines.push(`${bodyIndent}{`);
       this.lines.push(`${body2Indent}if (kind != ${kindTypeName}.${kindName})`);

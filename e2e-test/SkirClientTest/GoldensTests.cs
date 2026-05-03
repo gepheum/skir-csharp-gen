@@ -57,18 +57,21 @@ public sealed class GoldensTests
 
     private static void VerifyAssertion(Assertion assertion)
     {
-        if (assertion.IsBytesEqual()) { VerifyBytesEqual(assertion.AsBytesEqual()); return; }
-        if (assertion.IsBytesIn()) { VerifyBytesIn(assertion.AsBytesIn()); return; }
-        if (assertion.IsStringEqual()) { VerifyStringEqual(assertion.AsStringEqual()); return; }
-        if (assertion.IsStringIn()) { VerifyStringIn(assertion.AsStringIn()); return; }
-        if (assertion.IsReserializeValue()) { VerifyReserializeValue(assertion.AsReserializeValue()); return; }
-        if (assertion.IsReserializeLargeString()) { VerifyReserializeLargeString(assertion.AsReserializeLargeString()); return; }
-        if (assertion.IsReserializeLargeArray()) { VerifyReserializeLargeArray(assertion.AsReserializeLargeArray()); return; }
-        if (assertion.IsEnumAFromJsonIsConstant()) { VerifyEnumAFromJsonIsConstant(assertion.AsEnumAFromJsonIsConstant()); return; }
-        if (assertion.IsEnumAFromBytesIsConstant()) { VerifyEnumAFromBytesIsConstant(assertion.AsEnumAFromBytesIsConstant()); return; }
-        if (assertion.IsEnumBFromJsonIsWrapperB()) { VerifyEnumBFromJsonIsWrapperB(assertion.AsEnumBFromJsonIsWrapperB()); return; }
-        if (assertion.IsEnumBFromBytesIsWrapperB()) { VerifyEnumBFromBytesIsWrapperB(assertion.AsEnumBFromBytesIsWrapperB()); return; }
-        throw new GoldenAssertionException("unknown Assertion variant");
+        switch (assertion.Kind)
+        {
+            case Assertion.KindType.BytesEqualWrapper: VerifyBytesEqual(assertion.AsBytesEqual()); return;
+            case Assertion.KindType.BytesInWrapper: VerifyBytesIn(assertion.AsBytesIn()); return;
+            case Assertion.KindType.StringEqualWrapper: VerifyStringEqual(assertion.AsStringEqual()); return;
+            case Assertion.KindType.StringInWrapper: VerifyStringIn(assertion.AsStringIn()); return;
+            case Assertion.KindType.ReserializeValueWrapper: VerifyReserializeValue(assertion.AsReserializeValue()); return;
+            case Assertion.KindType.ReserializeLargeStringWrapper: VerifyReserializeLargeString(assertion.AsReserializeLargeString()); return;
+            case Assertion.KindType.ReserializeLargeArrayWrapper: VerifyReserializeLargeArray(assertion.AsReserializeLargeArray()); return;
+            case Assertion.KindType.EnumAFromJsonIsConstantWrapper: VerifyEnumAFromJsonIsConstant(assertion.AsEnumAFromJsonIsConstant()); return;
+            case Assertion.KindType.EnumAFromBytesIsConstantWrapper: VerifyEnumAFromBytesIsConstant(assertion.AsEnumAFromBytesIsConstant()); return;
+            case Assertion.KindType.EnumBFromJsonIsWrapperBWrapper: VerifyEnumBFromJsonIsWrapperB(assertion.AsEnumBFromJsonIsWrapperB()); return;
+            case Assertion.KindType.EnumBFromBytesIsWrapperBWrapper: VerifyEnumBFromBytesIsWrapperB(assertion.AsEnumBFromBytesIsWrapperB()); return;
+            default: throw new GoldenAssertionException("unknown Assertion variant");
+        }
     }
 
     private static void VerifyBytesEqual(Assertion_BytesEqual a)
@@ -142,7 +145,7 @@ public sealed class GoldensTests
     {
         var json = EvaluateString(a.Actual);
         var value = EnumB.Serializer.FromJson(json, a.KeepUnrecognized);
-        if (value.IsB())
+        if (value.Kind == EnumB.KindType.BWrapper)
         {
             var b = value.AsB();
             if (b != a.Expected)
@@ -162,7 +165,7 @@ public sealed class GoldensTests
     {
         var bytes = EvaluateBytes(a.Actual);
         var value = EnumB.Serializer.FromBytes(bytes, a.KeepUnrecognized);
-        if (value.IsB())
+        if (value.Kind == EnumB.KindType.BWrapper)
         {
             var b = value.AsB();
             if (b != a.Expected)
@@ -509,92 +512,91 @@ public sealed class GoldensTests
     private static string ToHex(ReadOnlySpan<byte> bytes)
         => ToHex(bytes.ToArray());
 
-    private static byte[] EvaluateBytes(BytesExpression expr)
-    {
-        if (expr.IsLiteral()) return expr.AsLiteral().ToArray();
-        if (expr.IsToBytes()) return EvaluateTypedValue(expr.AsToBytes()).ToBytes();
-        throw new GoldenAssertionException("unknown BytesExpression variant");
-    }
+    private static byte[] EvaluateBytes(BytesExpression expr) =>
+        expr.Kind switch
+        {
+            BytesExpression.KindType.LiteralWrapper => expr.AsLiteral().ToArray(),
+            BytesExpression.KindType.ToBytesWrapper => EvaluateTypedValue(expr.AsToBytes()).ToBytes(),
+            _ => throw new GoldenAssertionException("unknown BytesExpression variant")
+        };
 
-    private static string EvaluateString(StringExpression expr)
-    {
-        if (expr.IsLiteral()) return expr.AsLiteral();
-        if (expr.IsToDenseJson()) return EvaluateTypedValue(expr.AsToDenseJson()).ToDenseJson();
-        if (expr.IsToReadableJson()) return EvaluateTypedValue(expr.AsToReadableJson()).ToReadableJson();
-        throw new GoldenAssertionException("unknown StringExpression variant");
-    }
+    private static string EvaluateString(StringExpression expr) =>
+        expr.Kind switch
+        {
+            StringExpression.KindType.LiteralWrapper => expr.AsLiteral(),
+            StringExpression.KindType.ToDenseJsonWrapper => EvaluateTypedValue(expr.AsToDenseJson()).ToDenseJson(),
+            StringExpression.KindType.ToReadableJsonWrapper => EvaluateTypedValue(expr.AsToReadableJson()).ToReadableJson(),
+            _ => throw new GoldenAssertionException("unknown StringExpression variant")
+        };
 
     private static EvaluatedValue EvaluateTypedValue(TypedValue tv)
     {
-        if (tv.IsBool()) return Ev(tv.AsBool(), Serializers.Bool);
-        if (tv.IsInt32()) return Ev(tv.AsInt32(), Serializers.Int32);
-        if (tv.IsInt64()) return Ev(tv.AsInt64(), Serializers.Int64);
-        if (tv.IsHash64()) return Ev(tv.AsHash64(), Serializers.Hash64);
-        if (tv.IsFloat32()) return Ev(tv.AsFloat32(), Serializers.Float32);
-        if (tv.IsFloat64()) return Ev(tv.AsFloat64(), Serializers.Float64);
-        if (tv.IsTimestamp()) return Ev(tv.AsTimestamp(), Serializers.Timestamp);
-        if (tv.IsString()) return Ev(tv.AsString(), Serializers.String);
-        if (tv.IsBytes()) return Ev(tv.AsBytes(), Serializers.Bytes);
-        if (tv.IsBoolOptional()) return Ev(tv.AsBoolOptional(), Serializers.OptionalValue(Serializers.Bool));
-        if (tv.IsInts()) return Ev(tv.AsInts(), Serializers.Array(Serializers.Int32));
-        if (tv.IsPoint()) return Ev(tv.AsPoint(), Point.Serializer);
-        if (tv.IsColor()) return Ev(tv.AsColor(), Color.Serializer);
-        if (tv.IsMyEnum()) return Ev(tv.AsMyEnum(), MyEnum.Serializer);
-        if (tv.IsEnumA()) return Ev(tv.AsEnumA(), EnumA.Serializer);
-        if (tv.IsEnumB()) return Ev(tv.AsEnumB(), EnumB.Serializer);
-        if (tv.IsKeyedArrays()) return Ev(tv.AsKeyedArrays(), KeyedArrays.Serializer);
-        if (tv.IsRecStruct()) return Ev(tv.AsRecStruct(), RecStruct.Serializer);
-        if (tv.IsRecEnum()) return Ev(tv.AsRecEnum(), RecEnum.Serializer);
-        if (tv.IsRoundTripDenseJson()) return RoundTripViaJson(tv.AsRoundTripDenseJson(), dense: true);
-        if (tv.IsRoundTripReadableJson()) return RoundTripViaJson(tv.AsRoundTripReadableJson(), dense: false);
-        if (tv.IsRoundTripBytes()) return RoundTripViaBytes(tv.AsRoundTripBytes());
-
-        if (tv.IsPointFromJsonKeepUnrecognized())
-            return Ev(Point.Serializer.FromJson(EvaluateString(tv.AsPointFromJsonKeepUnrecognized()), keepUnrecognizedValues: true), Point.Serializer);
-        if (tv.IsPointFromJsonDropUnrecognized())
-            return Ev(Point.Serializer.FromJson(EvaluateString(tv.AsPointFromJsonDropUnrecognized()), keepUnrecognizedValues: false), Point.Serializer);
-        if (tv.IsPointFromBytesKeepUnrecognized())
-            return Ev(Point.Serializer.FromBytes(EvaluateBytes(tv.AsPointFromBytesKeepUnrecognized()), keepUnrecognizedValues: true), Point.Serializer);
-        if (tv.IsPointFromBytesDropUnrecognized())
-            return Ev(Point.Serializer.FromBytes(EvaluateBytes(tv.AsPointFromBytesDropUnrecognized()), keepUnrecognizedValues: false), Point.Serializer);
-
-        if (tv.IsColorFromJsonKeepUnrecognized())
-            return Ev(Color.Serializer.FromJson(EvaluateString(tv.AsColorFromJsonKeepUnrecognized()), keepUnrecognizedValues: true), Color.Serializer);
-        if (tv.IsColorFromJsonDropUnrecognized())
-            return Ev(Color.Serializer.FromJson(EvaluateString(tv.AsColorFromJsonDropUnrecognized()), keepUnrecognizedValues: false), Color.Serializer);
-        if (tv.IsColorFromBytesKeepUnrecognized())
-            return Ev(Color.Serializer.FromBytes(EvaluateBytes(tv.AsColorFromBytesKeepUnrecognized()), keepUnrecognizedValues: true), Color.Serializer);
-        if (tv.IsColorFromBytesDropUnrecognized())
-            return Ev(Color.Serializer.FromBytes(EvaluateBytes(tv.AsColorFromBytesDropUnrecognized()), keepUnrecognizedValues: false), Color.Serializer);
-
-        if (tv.IsMyEnumFromJsonKeepUnrecognized())
-            return Ev(MyEnum.Serializer.FromJson(EvaluateString(tv.AsMyEnumFromJsonKeepUnrecognized()), keepUnrecognizedValues: true), MyEnum.Serializer);
-        if (tv.IsMyEnumFromJsonDropUnrecognized())
-            return Ev(MyEnum.Serializer.FromJson(EvaluateString(tv.AsMyEnumFromJsonDropUnrecognized()), keepUnrecognizedValues: false), MyEnum.Serializer);
-        if (tv.IsMyEnumFromBytesKeepUnrecognized())
-            return Ev(MyEnum.Serializer.FromBytes(EvaluateBytes(tv.AsMyEnumFromBytesKeepUnrecognized()), keepUnrecognizedValues: true), MyEnum.Serializer);
-        if (tv.IsMyEnumFromBytesDropUnrecognized())
-            return Ev(MyEnum.Serializer.FromBytes(EvaluateBytes(tv.AsMyEnumFromBytesDropUnrecognized()), keepUnrecognizedValues: false), MyEnum.Serializer);
-
-        if (tv.IsEnumAFromJsonKeepUnrecognized())
-            return Ev(EnumA.Serializer.FromJson(EvaluateString(tv.AsEnumAFromJsonKeepUnrecognized()), keepUnrecognizedValues: true), EnumA.Serializer);
-        if (tv.IsEnumAFromJsonDropUnrecognized())
-            return Ev(EnumA.Serializer.FromJson(EvaluateString(tv.AsEnumAFromJsonDropUnrecognized()), keepUnrecognizedValues: false), EnumA.Serializer);
-        if (tv.IsEnumAFromBytesKeepUnrecognized())
-            return Ev(EnumA.Serializer.FromBytes(EvaluateBytes(tv.AsEnumAFromBytesKeepUnrecognized()), keepUnrecognizedValues: true), EnumA.Serializer);
-        if (tv.IsEnumAFromBytesDropUnrecognized())
-            return Ev(EnumA.Serializer.FromBytes(EvaluateBytes(tv.AsEnumAFromBytesDropUnrecognized()), keepUnrecognizedValues: false), EnumA.Serializer);
-
-        if (tv.IsEnumBFromJsonKeepUnrecognized())
-            return Ev(EnumB.Serializer.FromJson(EvaluateString(tv.AsEnumBFromJsonKeepUnrecognized()), keepUnrecognizedValues: true), EnumB.Serializer);
-        if (tv.IsEnumBFromJsonDropUnrecognized())
-            return Ev(EnumB.Serializer.FromJson(EvaluateString(tv.AsEnumBFromJsonDropUnrecognized()), keepUnrecognizedValues: false), EnumB.Serializer);
-        if (tv.IsEnumBFromBytesKeepUnrecognized())
-            return Ev(EnumB.Serializer.FromBytes(EvaluateBytes(tv.AsEnumBFromBytesKeepUnrecognized()), keepUnrecognizedValues: true), EnumB.Serializer);
-        if (tv.IsEnumBFromBytesDropUnrecognized())
-            return Ev(EnumB.Serializer.FromBytes(EvaluateBytes(tv.AsEnumBFromBytesDropUnrecognized()), keepUnrecognizedValues: false), EnumB.Serializer);
-
-        throw new GoldenAssertionException("unknown TypedValue variant");
+        switch (tv.Kind)
+        {
+            case TypedValue.KindType.BoolWrapper: return Ev(tv.AsBool(), Serializers.Bool);
+            case TypedValue.KindType.Int32Wrapper: return Ev(tv.AsInt32(), Serializers.Int32);
+            case TypedValue.KindType.Int64Wrapper: return Ev(tv.AsInt64(), Serializers.Int64);
+            case TypedValue.KindType.Hash64Wrapper: return Ev(tv.AsHash64(), Serializers.Hash64);
+            case TypedValue.KindType.Float32Wrapper: return Ev(tv.AsFloat32(), Serializers.Float32);
+            case TypedValue.KindType.Float64Wrapper: return Ev(tv.AsFloat64(), Serializers.Float64);
+            case TypedValue.KindType.TimestampWrapper: return Ev(tv.AsTimestamp(), Serializers.Timestamp);
+            case TypedValue.KindType.StringWrapper: return Ev(tv.AsString(), Serializers.String);
+            case TypedValue.KindType.BytesWrapper: return Ev(tv.AsBytes(), Serializers.Bytes);
+            case TypedValue.KindType.BoolOptionalWrapper: return Ev(tv.AsBoolOptional(), Serializers.OptionalValue(Serializers.Bool));
+            case TypedValue.KindType.IntsWrapper: return Ev(tv.AsInts(), Serializers.Array(Serializers.Int32));
+            case TypedValue.KindType.PointWrapper: return Ev(tv.AsPoint(), Point.Serializer);
+            case TypedValue.KindType.ColorWrapper: return Ev(tv.AsColor(), Color.Serializer);
+            case TypedValue.KindType.MyEnumWrapper: return Ev(tv.AsMyEnum(), MyEnum.Serializer);
+            case TypedValue.KindType.EnumAWrapper: return Ev(tv.AsEnumA(), EnumA.Serializer);
+            case TypedValue.KindType.EnumBWrapper: return Ev(tv.AsEnumB(), EnumB.Serializer);
+            case TypedValue.KindType.KeyedArraysWrapper: return Ev(tv.AsKeyedArrays(), KeyedArrays.Serializer);
+            case TypedValue.KindType.RecStructWrapper: return Ev(tv.AsRecStruct(), RecStruct.Serializer);
+            case TypedValue.KindType.RecEnumWrapper: return Ev(tv.AsRecEnum(), RecEnum.Serializer);
+            case TypedValue.KindType.RoundTripDenseJsonWrapper: return RoundTripViaJson(tv.AsRoundTripDenseJson(), dense: true);
+            case TypedValue.KindType.RoundTripReadableJsonWrapper: return RoundTripViaJson(tv.AsRoundTripReadableJson(), dense: false);
+            case TypedValue.KindType.RoundTripBytesWrapper: return RoundTripViaBytes(tv.AsRoundTripBytes());
+            case TypedValue.KindType.PointFromJsonKeepUnrecognizedWrapper:
+                return Ev(Point.Serializer.FromJson(EvaluateString(tv.AsPointFromJsonKeepUnrecognized()), keepUnrecognizedValues: true), Point.Serializer);
+            case TypedValue.KindType.PointFromJsonDropUnrecognizedWrapper:
+                return Ev(Point.Serializer.FromJson(EvaluateString(tv.AsPointFromJsonDropUnrecognized()), keepUnrecognizedValues: false), Point.Serializer);
+            case TypedValue.KindType.PointFromBytesKeepUnrecognizedWrapper:
+                return Ev(Point.Serializer.FromBytes(EvaluateBytes(tv.AsPointFromBytesKeepUnrecognized()), keepUnrecognizedValues: true), Point.Serializer);
+            case TypedValue.KindType.PointFromBytesDropUnrecognizedWrapper:
+                return Ev(Point.Serializer.FromBytes(EvaluateBytes(tv.AsPointFromBytesDropUnrecognized()), keepUnrecognizedValues: false), Point.Serializer);
+            case TypedValue.KindType.ColorFromJsonKeepUnrecognizedWrapper:
+                return Ev(Color.Serializer.FromJson(EvaluateString(tv.AsColorFromJsonKeepUnrecognized()), keepUnrecognizedValues: true), Color.Serializer);
+            case TypedValue.KindType.ColorFromJsonDropUnrecognizedWrapper:
+                return Ev(Color.Serializer.FromJson(EvaluateString(tv.AsColorFromJsonDropUnrecognized()), keepUnrecognizedValues: false), Color.Serializer);
+            case TypedValue.KindType.ColorFromBytesKeepUnrecognizedWrapper:
+                return Ev(Color.Serializer.FromBytes(EvaluateBytes(tv.AsColorFromBytesKeepUnrecognized()), keepUnrecognizedValues: true), Color.Serializer);
+            case TypedValue.KindType.ColorFromBytesDropUnrecognizedWrapper:
+                return Ev(Color.Serializer.FromBytes(EvaluateBytes(tv.AsColorFromBytesDropUnrecognized()), keepUnrecognizedValues: false), Color.Serializer);
+            case TypedValue.KindType.MyEnumFromJsonKeepUnrecognizedWrapper:
+                return Ev(MyEnum.Serializer.FromJson(EvaluateString(tv.AsMyEnumFromJsonKeepUnrecognized()), keepUnrecognizedValues: true), MyEnum.Serializer);
+            case TypedValue.KindType.MyEnumFromJsonDropUnrecognizedWrapper:
+                return Ev(MyEnum.Serializer.FromJson(EvaluateString(tv.AsMyEnumFromJsonDropUnrecognized()), keepUnrecognizedValues: false), MyEnum.Serializer);
+            case TypedValue.KindType.MyEnumFromBytesKeepUnrecognizedWrapper:
+                return Ev(MyEnum.Serializer.FromBytes(EvaluateBytes(tv.AsMyEnumFromBytesKeepUnrecognized()), keepUnrecognizedValues: true), MyEnum.Serializer);
+            case TypedValue.KindType.MyEnumFromBytesDropUnrecognizedWrapper:
+                return Ev(MyEnum.Serializer.FromBytes(EvaluateBytes(tv.AsMyEnumFromBytesDropUnrecognized()), keepUnrecognizedValues: false), MyEnum.Serializer);
+            case TypedValue.KindType.EnumAFromJsonKeepUnrecognizedWrapper:
+                return Ev(EnumA.Serializer.FromJson(EvaluateString(tv.AsEnumAFromJsonKeepUnrecognized()), keepUnrecognizedValues: true), EnumA.Serializer);
+            case TypedValue.KindType.EnumAFromJsonDropUnrecognizedWrapper:
+                return Ev(EnumA.Serializer.FromJson(EvaluateString(tv.AsEnumAFromJsonDropUnrecognized()), keepUnrecognizedValues: false), EnumA.Serializer);
+            case TypedValue.KindType.EnumAFromBytesKeepUnrecognizedWrapper:
+                return Ev(EnumA.Serializer.FromBytes(EvaluateBytes(tv.AsEnumAFromBytesKeepUnrecognized()), keepUnrecognizedValues: true), EnumA.Serializer);
+            case TypedValue.KindType.EnumAFromBytesDropUnrecognizedWrapper:
+                return Ev(EnumA.Serializer.FromBytes(EvaluateBytes(tv.AsEnumAFromBytesDropUnrecognized()), keepUnrecognizedValues: false), EnumA.Serializer);
+            case TypedValue.KindType.EnumBFromJsonKeepUnrecognizedWrapper:
+                return Ev(EnumB.Serializer.FromJson(EvaluateString(tv.AsEnumBFromJsonKeepUnrecognized()), keepUnrecognizedValues: true), EnumB.Serializer);
+            case TypedValue.KindType.EnumBFromJsonDropUnrecognizedWrapper:
+                return Ev(EnumB.Serializer.FromJson(EvaluateString(tv.AsEnumBFromJsonDropUnrecognized()), keepUnrecognizedValues: false), EnumB.Serializer);
+            case TypedValue.KindType.EnumBFromBytesKeepUnrecognizedWrapper:
+                return Ev(EnumB.Serializer.FromBytes(EvaluateBytes(tv.AsEnumBFromBytesKeepUnrecognized()), keepUnrecognizedValues: true), EnumB.Serializer);
+            case TypedValue.KindType.EnumBFromBytesDropUnrecognizedWrapper:
+                return Ev(EnumB.Serializer.FromBytes(EvaluateBytes(tv.AsEnumBFromBytesDropUnrecognized()), keepUnrecognizedValues: false), EnumB.Serializer);
+            default: throw new GoldenAssertionException("unknown TypedValue variant");
+        }
     }
 
     private static EvaluatedValue RoundTripViaJson(TypedValue inner, bool dense)
