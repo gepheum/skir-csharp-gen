@@ -24,4 +24,21 @@ public sealed class FullNameTests
         FullName decoded = FullName.Serializer.FromJson(json);
         Assert.Equal(name, decoded);
     }
+
+    [Fact]
+    public void ModifiedCopyWithWith()
+    {
+        FullName name = new() { FirstName = "John", LastName = "Doe" };
+        FullName otherName = name with { LastName = "Smith" };
+        Assert.Equal("John", otherName.FirstName);
+        Assert.Equal("Smith", otherName.LastName);
+    }
+
+    [Fact]
+    public void ModifiedCopyWithWithOnDefault()
+    {
+        FullName otherName = FullName.Default with { LastName = "Smith" };
+        Assert.Equal("", otherName.FirstName);
+        Assert.Equal("Smith", otherName.LastName);
+    }
 }

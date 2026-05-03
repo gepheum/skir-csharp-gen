@@ -1,7 +1,6 @@
-// TODO: verify no name conflict between module and class name???
-// KeyedArrays
+// TODO: verify no name conflict between module and class name (maybe lowercased names)???
+// TODO: toJson or toJsonCode
 // Formatting...
-/// Test that we can use `with`
 
 import {
   convertCase,
