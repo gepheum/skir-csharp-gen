@@ -2,6 +2,7 @@
 // TODO: toJson or toJsonCode
 // TODO: constant generation, use `const` for real
 // TODO: add internalPrefix to generated struct
+// TODO: I don't think you need _adapterSerializer
 // Formatting...
 
 import {
@@ -157,26 +158,36 @@ class CsharpSourceFileGenerator {
 
     for (const constant of constants) {
       const propName = convertCase(constant.name.text, "UpperCamel");
-      const type = constant.type;
-      const csharpType = this.typeSpeller.getCsharpType(type);
-      const serExpr = this.typeSpeller.getSerializerExpr(type, false);
-      // Serialize the DenseJson value to a JSON string, then wrap it in a C#
-      // string literal by JSON-stringifying the result (escaping special chars).
-      const jsonLiteral = JSON.stringify(
-        JSON.stringify(constant.valueAsDenseJson),
-      );
-      const lazyField = `_${propName.charAt(0).toLowerCase()}${propName.slice(1)}_Lazy`;
+      const constLiteral = tryGetCsharpLiteral(constant);
 
-      this.lines.push(
-        `    private static readonly global::System.Lazy<${csharpType}> ${lazyField}`,
-      );
-      this.lines.push(
-        `        = new(() => ${serExpr}.FromJson(${jsonLiteral}));`,
-      );
-      this.lines.push(
-        `    public static ${csharpType} ${propName} => ${lazyField}.Value;`,
-      );
-      this.lines.push("");
+      if (constLiteral !== null) {
+        // Simple types can use the `const` keyword.
+        this.lines.push(
+          `    public const ${constLiteral.csharpType} ${propName} = ${constLiteral.literal};`,
+        );
+        this.lines.push("");
+      } else {
+        const type = constant.type;
+        const csharpType = this.typeSpeller.getCsharpType(type);
+        const serExpr = this.typeSpeller.getSerializerExpr(type, false);
+        // Serialize the DenseJson value to a JSON string, then wrap it in a C#
+        // string literal by JSON-stringifying the result (escaping special chars).
+        const jsonLiteral = JSON.stringify(
+          JSON.stringify(constant.valueAsDenseJson),
+        );
+        const lazyField = `_${propName.charAt(0).toLowerCase()}${propName.slice(1)}_Lazy`;
+
+        this.lines.push(
+          `    private static readonly global::System.Lazy<${csharpType}> ${lazyField}`,
+        );
+        this.lines.push(
+          `        = new(() => ${serExpr}.FromJson(${jsonLiteral}));`,
+        );
+        this.lines.push(
+          `    public static ${csharpType} ${propName} => ${lazyField}.Value;`,
+        );
+        this.lines.push("");
+      }
     }
 
     this.lines.push("}");
@@ -941,6 +952,79 @@ class CsharpSourceFileGenerator {
     const ns = modulePathToNamespace(record.modulePath);
     const typePath = getTypeName(record);
     return `global::${ns}.${typePath}`;
+  }
+}
+
+function tryGetCsharpLiteral(
+  constant: Constant,
+): { literal: string; csharpType: string } | null {
+  const type = constant.type!;
+  if (type.kind !== "primitive") {
+    return null;
+  }
+  const valueAsDenseJson = constant.valueAsDenseJson!;
+  switch (type.primitive) {
+    case "bool":
+      return {
+        literal: valueAsDenseJson ? "true" : "false",
+        csharpType: "bool",
+      };
+    case "int32":
+      return { literal: valueAsDenseJson.toString(), csharpType: "int" };
+    case "int64": {
+      const maybeQuoted = valueAsDenseJson.toString();
+      const numStr =
+        maybeQuoted.startsWith('"') && maybeQuoted.endsWith('"')
+          ? maybeQuoted.slice(1, -1)
+          : maybeQuoted;
+      return { literal: `${numStr}L`, csharpType: "long" };
+    }
+    case "hash64": {
+      const maybeQuoted = valueAsDenseJson.toString();
+      const numStr =
+        maybeQuoted.startsWith('"') && maybeQuoted.endsWith('"')
+          ? maybeQuoted.slice(1, -1)
+          : maybeQuoted;
+      return { literal: `${numStr}UL`, csharpType: "ulong" };
+    }
+    case "float32": {
+      const maybeQuoted = valueAsDenseJson.toString();
+      if (
+        maybeQuoted === "Infinity" ||
+        maybeQuoted === "-Infinity" ||
+        maybeQuoted === "NaN"
+      ) {
+        return null;
+      }
+      const numStr =
+        maybeQuoted.startsWith('"') && maybeQuoted.endsWith('"')
+          ? maybeQuoted.slice(1, -1)
+          : maybeQuoted;
+      return { literal: `${numStr}f`, csharpType: "float" };
+    }
+    case "float64": {
+      const maybeQuoted = valueAsDenseJson.toString();
+      if (
+        maybeQuoted === "Infinity" ||
+        maybeQuoted === "-Infinity" ||
+        maybeQuoted === "NaN"
+      ) {
+        return null;
+      }
+      const numStr =
+        maybeQuoted.startsWith('"') && maybeQuoted.endsWith('"')
+          ? maybeQuoted.slice(1, -1)
+          : maybeQuoted;
+      return { literal: numStr, csharpType: "double" };
+    }
+    case "string":
+      return {
+        literal: JSON.stringify(valueAsDenseJson as string),
+        csharpType: "string",
+      };
+    case "bytes":
+    case "timestamp":
+      return null;
   }
 }
 

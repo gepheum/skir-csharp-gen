@@ -13,3 +13,5 @@ method WithExplicitNumber(
 method True(
   string
 ): string = 78901;
+
+struct Methods {}
