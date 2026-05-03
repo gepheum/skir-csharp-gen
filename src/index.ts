@@ -368,39 +368,110 @@ class CsharpSourceFileGenerator {
     );
     this.lines.push("");
 
-    const keyedArraySpecs =
-      this.keyedArrayContext.getKeySpecsForItemStruct(record);
-    if (keyedArraySpecs.length > 0) {
-      const usedIndexerNames = new Set<string>([
-        "Default",
-        "Serializer",
-        "InitAdapter_",
-        "_adapter",
-        "_adapterSerializer",
-        "_unrecognized",
-        "Builder_",
-      ]);
-      for (const { propertyName } of fieldInfos) {
-        usedIndexerNames.add(propertyName);
-      }
-
-      for (const spec of keyedArraySpecs) {
-        const keyType = this.getCsharpMapKeyType(spec.fieldPath.keyType);
-        const keySelector = this.getKeySelectorLambda(record, spec.fieldPath);
-        if (!keyType || !keySelector) {
-          continue;
-        }
-
-        let indexerName = spec.specName;
-        while (usedIndexerNames.has(indexerName) || indexerName === name) {
-          indexerName = `${indexerName}_`;
-        }
-        usedIndexerNames.add(indexerName);
-
+    const keyedArrayIndexers = this.computeStructIndexerInfos(
+      record,
+      name,
+      fieldInfos,
+    );
+    if (keyedArrayIndexers.length > 0) {
+      for (const indexer of keyedArrayIndexers) {
         this.lines.push(
-          `${bodyIndent}public static readonly global::SkirClient.Internal.Indexer<${fqName}, ${keyType}> ${indexerName} = new(${keySelector});`,
+          `${bodyIndent}public static readonly global::SkirClient.Internal.Indexer<${fqName}, ${indexer.keyType}> ${indexer.indexerName} = new(${indexer.keySelector});`,
         );
       }
+      this.lines.push("");
+    }
+
+    const usedMethodNames = new Set<string>([
+      "Default",
+      "Serializer",
+      "InitAdapter_",
+      "_adapter",
+      "_adapterSerializer",
+      "_unrecognized",
+      "Builder_",
+      ...keyedArrayIndexers.map((k) => k.indexerName),
+      ...fieldInfos.map((f) => f.propertyName),
+    ]);
+    for (const { field, propertyName } of fieldInfos) {
+      if (!field.type || field.type.kind !== "array" || !field.type.key) {
+        continue;
+      }
+
+      const keySpec = this.keyedArrayContext.getKeySpecForArrayType(field.type);
+      if (!keySpec || field.type.item.kind !== "record") {
+        continue;
+      }
+
+      const keyType = this.getCsharpMapKeyType(field.type.key.keyType);
+      if (!keyType) {
+        continue;
+      }
+
+      const itemRecord = this.typeSpeller.recordMap.get(field.type.item.key);
+      if (!itemRecord || itemRecord.record.recordType !== "struct") {
+        continue;
+      }
+
+      const itemTypeName = getTypeName(itemRecord);
+      const itemFieldInfos = this.computeFieldInfos(itemRecord, itemTypeName);
+      const itemIndexers = this.computeStructIndexerInfos(
+        itemRecord,
+        itemTypeName,
+        itemFieldInfos,
+      );
+      const keyExtractor = this.getFieldPathExtractor(keySpec.fieldPath);
+      const itemIndexer = itemIndexers.find(
+        (indexer) => indexer.keyExtractor === keyExtractor,
+      );
+      if (!itemIndexer) {
+        continue;
+      }
+
+      const itemType = this.typeSpeller.getCsharpType(field.type.item);
+      const itemDefaultExpr = this.typeSpeller.getDefaultExpr(field.type.item);
+      const itemOptionalType = `${itemType}?`;
+      const itemIndexerRef = `${this.getFullyQualifiedTypeName(itemRecord)}.${itemIndexer.indexerName}`;
+
+      let findByKeyName = `${propertyName}_FindByKey`;
+      while (usedMethodNames.has(findByKeyName) || findByKeyName === name) {
+        findByKeyName = `${findByKeyName}_`;
+      }
+      usedMethodNames.add(findByKeyName);
+
+      let findByKeyOrDefaultName = `${propertyName}_FindByKeyOrDefault`;
+      while (
+        usedMethodNames.has(findByKeyOrDefaultName) ||
+        findByKeyOrDefaultName === name
+      ) {
+        findByKeyOrDefaultName = `${findByKeyOrDefaultName}_`;
+      }
+      usedMethodNames.add(findByKeyOrDefaultName);
+
+      this.lines.push(
+        `${bodyIndent}public ${itemOptionalType} ${findByKeyName}(${keyType} key)`,
+      );
+      this.lines.push(`${bodyIndent}{`);
+      this.lines.push(
+        `${body2Indent}var indexed = ${itemIndexerRef}.Index(${propertyName});`,
+      );
+      this.lines.push(
+        `${body2Indent}return indexed.TryGetValue(key, out var value) ? value : null;`,
+      );
+      this.lines.push(`${bodyIndent}}`);
+      this.lines.push("");
+
+      this.lines.push(
+        `${bodyIndent}public ${itemType} ${findByKeyOrDefaultName}(${keyType} key)`,
+      );
+      this.lines.push(`${bodyIndent}{`);
+      this.lines.push(
+        `${body2Indent}var indexed = ${itemIndexerRef}.Index(${propertyName});`,
+      );
+      this.lines.push(
+        `${body2Indent}return indexed.TryGetValue(key, out var value) ? value : ${itemDefaultExpr};`,
+      );
+      this.lines.push(`${bodyIndent}}`);
       this.lines.push("");
     }
 
@@ -738,6 +809,67 @@ class CsharpSourceFileGenerator {
     }
     this.fieldNameMapCache.set(structRecord.record.key, map);
     return map;
+  }
+
+  private getFieldPathExtractor(fieldPath: FieldPath): string {
+    return fieldPath.path.map((part) => part.name.text).join(".");
+  }
+
+  private computeStructIndexerInfos(
+    record: RecordLocation,
+    typeName: string,
+    fieldInfos: ReadonlyArray<{ field: Field; propertyName: string }>,
+  ): Array<{
+    indexerName: string;
+    keyType: string;
+    keySelector: string;
+    keyExtractor: string;
+  }> {
+    const keyedArraySpecs =
+      this.keyedArrayContext.getKeySpecsForItemStruct(record);
+    if (keyedArraySpecs.length === 0) {
+      return [];
+    }
+
+    const usedIndexerNames = new Set<string>([
+      "Default",
+      "Serializer",
+      "InitAdapter_",
+      "_adapter",
+      "_adapterSerializer",
+      "_unrecognized",
+      "Builder_",
+      ...fieldInfos.map((f) => f.propertyName),
+    ]);
+    const result: Array<{
+      indexerName: string;
+      keyType: string;
+      keySelector: string;
+      keyExtractor: string;
+    }> = [];
+
+    for (const spec of keyedArraySpecs) {
+      const keyType = this.getCsharpMapKeyType(spec.fieldPath.keyType);
+      const keySelector = this.getKeySelectorLambda(record, spec.fieldPath);
+      if (!keyType || !keySelector) {
+        continue;
+      }
+
+      let indexerName = spec.specName;
+      while (usedIndexerNames.has(indexerName) || indexerName === typeName) {
+        indexerName = `${indexerName}_`;
+      }
+      usedIndexerNames.add(indexerName);
+
+      result.push({
+        indexerName,
+        keyType,
+        keySelector,
+        keyExtractor: this.getFieldPathExtractor(spec.fieldPath),
+      });
+    }
+
+    return result;
   }
 
   private getCsharpMapKeyType(

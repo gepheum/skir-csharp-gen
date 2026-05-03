@@ -63,6 +63,36 @@ export class KeyedArrayContext {
     }));
   }
 
+  getKeySpecForArrayType(
+    type: Extract<ResolvedType, { kind: "array" }>,
+  ): KeyedArraySpec | null {
+    if (!type.key || type.item.kind !== "record") {
+      return null;
+    }
+
+    const keyExtractor = type.key.path.map((part) => part.name.text).join(".");
+    return (
+      this.getKeySpecsForItemStructByKey(type.item.key).find(
+        (spec) =>
+          spec.fieldPath.path.map((part) => part.name.text).join(".") ===
+          keyExtractor,
+      ) ?? null
+    );
+  }
+
+  private getKeySpecsForItemStructByKey(
+    recordKey: RecordKey,
+  ): readonly KeyedArraySpec[] {
+    const keyMap = this.recordKeyToKeyMap.get(recordKey);
+    if (!keyMap) {
+      return [];
+    }
+    return [...keyMap.values()].map((fieldPath) => ({
+      specName: getCsharpKeySpecSuffix(fieldPath),
+      fieldPath,
+    }));
+  }
+
   private readonly recordKeyToKeyMap = new Map<
     RecordKey,
     Map<string, FieldPath>
