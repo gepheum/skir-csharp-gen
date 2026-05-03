@@ -34,7 +34,7 @@ public sealed class Serializer<T>
     /// name-based, indented JSON - use this for debugging only.
     /// </para>
     /// </summary>
-    public string ToJson(T value, bool readable = false)
+    public string ToJson(T value, MustNameArguments _ = default, bool readable = false)
     {
         var sb = new StringBuilder();
         _adapter.ToJson(value, readable ? "\n" : null, sb);
@@ -61,7 +61,7 @@ public sealed class Serializer<T>
     /// unrecognized-fields store so that re-serializing the value does not
     /// silently discard forward-compatible fields.
     /// </summary>
-    public T FromJson(string json, bool keepUnrecognizedValues = false)
+    public T FromJson(string json, MustNameArguments _ = default, bool keepUnrecognizedValues = false)
     {
         using var doc = JsonDocument.Parse(json);
         return _adapter.FromJson(doc.RootElement, keepUnrecognizedValues);
@@ -72,7 +72,7 @@ public sealed class Serializer<T>
     /// When <paramref name="keepUnrecognizedValues"/> is <c>true</c>, unrecognized
     /// field data is preserved for round-trip fidelity.
     /// </summary>
-    public T FromBytes(byte[] bytes, bool keepUnrecognizedValues = false)
+    public T FromBytes(byte[] bytes, MustNameArguments _ = default, bool keepUnrecognizedValues = false)
     {
         if (bytes.Length >= 4 &&
             bytes[0] == 's' && bytes[1] == 'k' &&
@@ -82,7 +82,10 @@ public sealed class Serializer<T>
             return _adapter.Decode(bytes, ref offset, keepUnrecognizedValues);
         }
         // No magic prefix - treat payload as UTF-8 JSON.
-        return FromJson(System.Text.Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
+        return FromJson(
+            System.Text.Encoding.UTF8.GetString(bytes),
+            MustNameArguments.GetDefault(),
+            keepUnrecognizedValues: keepUnrecognizedValues);
     }
 
     /// <summary>Reflection descriptor for this type's schema.</summary>

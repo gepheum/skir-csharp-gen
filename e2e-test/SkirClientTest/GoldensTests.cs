@@ -122,7 +122,7 @@ public sealed class GoldensTests
     private static void VerifyEnumAFromJsonIsConstant(Assertion_EnumAFromJsonIsConstant a)
     {
         var json = EvaluateString(a.Actual);
-        var value = EnumA.Serializer.FromJson(json, a.KeepUnrecognized);
+        var value = EnumA.Serializer.FromJson(json, keepUnrecognizedValues: a.KeepUnrecognized);
         if (!ReferenceEquals(value, EnumA.A))
         {
             throw new GoldenAssertionException(
@@ -133,7 +133,7 @@ public sealed class GoldensTests
     private static void VerifyEnumAFromBytesIsConstant(Assertion_EnumAFromBytesIsConstant a)
     {
         var bytes = EvaluateBytes(a.Actual);
-        var value = EnumA.Serializer.FromBytes(bytes, a.KeepUnrecognized);
+        var value = EnumA.Serializer.FromBytes(bytes, keepUnrecognizedValues: a.KeepUnrecognized);
         if (!ReferenceEquals(value, EnumA.A))
         {
             throw new GoldenAssertionException(
@@ -144,7 +144,7 @@ public sealed class GoldensTests
     private static void VerifyEnumBFromJsonIsWrapperB(Assertion_EnumBFromJsonIsWrapperB a)
     {
         var json = EvaluateString(a.Actual);
-        var value = EnumB.Serializer.FromJson(json, a.KeepUnrecognized);
+        var value = EnumB.Serializer.FromJson(json, keepUnrecognizedValues: a.KeepUnrecognized);
         if (value.Kind == EnumB.KindType.BWrapper)
         {
             var b = value.AsB();
@@ -164,7 +164,7 @@ public sealed class GoldensTests
     private static void VerifyEnumBFromBytesIsWrapperB(Assertion_EnumBFromBytesIsWrapperB a)
     {
         var bytes = EvaluateBytes(a.Actual);
-        var value = EnumB.Serializer.FromBytes(bytes, a.KeepUnrecognized);
+        var value = EnumB.Serializer.FromBytes(bytes, keepUnrecognizedValues: a.KeepUnrecognized);
         if (value.Kind == EnumB.KindType.BWrapper)
         {
             var b = value.AsB();
