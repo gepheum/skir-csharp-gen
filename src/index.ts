@@ -1,6 +1,5 @@
 // TODO: verify no name conflict between module and class name (maybe lowercased names)???
 // TODO: toJson or toJsonCode
-// TODO: constant generation, use `const` for real
 // TODO: add internalPrefix to generated struct
 // TODO: I don't think you need _adapterSerializer
 // Formatting...
@@ -324,7 +323,7 @@ class CsharpSourceFileGenerator {
     this.lines.push("");
 
     // Nested builder class.
-    this.lines.push(`${bodyIndent}private sealed class Builder_`);
+    this.lines.push(`${bodyIndent}internal sealed class Builder_`);
     this.lines.push(`${bodyIndent}{`);
     for (const { field, propertyName } of fieldInfos) {
       const fieldType = this.typeSpeller.getCsharpFieldType(field);
@@ -349,7 +348,7 @@ class CsharpSourceFileGenerator {
       : `b => new ${name} { _unrecognized = b._unrecognized }`;
     const structDoc = this.getDocText(record.record.doc);
     this.lines.push(
-      `${bodyIndent}private static readonly global::SkirClient.Internal.StructAdapter<${fqName}, Builder_> _adapter = new(`,
+      `${bodyIndent}internal static readonly global::SkirClient.Internal.StructAdapter<${fqName}, Builder_> _adapter = new(`,
     );
     this.lines.push(`${bodyIndent}        ${name}.Default,`);
     this.lines.push(`${bodyIndent}        ${JSON.stringify(modulePath)},`);
@@ -360,17 +359,12 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${bodyIndent}        x => x._unrecognized,`);
     this.lines.push(`${bodyIndent}        (b, v) => b._unrecognized = v`);
     this.lines.push(`${bodyIndent}    );`);
-    this.lines.push(
-      `${bodyIndent}internal static readonly global::SkirClient.Serializer<${fqName}> _adapterSerializer = new(_adapter);`,
-    );
-    this.lines.push("");
-
     // Serializer property.
     this.lines.push(
       `${bodyIndent}public static global::SkirClient.Serializer<${fqName}> Serializer`,
     );
     this.lines.push(
-      `${bodyIndent}{ get { ModuleInit_.EnsureInit(); return _adapterSerializer; } }`,
+      `${bodyIndent}{ get { ModuleInit_.EnsureInit(); return new(_adapter); } }`,
     );
     this.lines.push("");
 
@@ -674,17 +668,12 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${body2Indent}${JSON.stringify(qualifiedName)},`);
     this.lines.push(`${body2Indent}${JSON.stringify(enumDoc)}`);
     this.lines.push(`${bodyIndent});`);
-    this.lines.push(
-      `${bodyIndent}internal static readonly global::SkirClient.Serializer<${fqBase}> _adapterSerializer = new(_adapter);`,
-    );
-    this.lines.push("");
-
     // Serializer property.
     this.lines.push(
       `${bodyIndent}public static global::SkirClient.Serializer<${fqBase}> Serializer`,
     );
     this.lines.push(
-      `${bodyIndent}{ get { ModuleInit_.EnsureInit(); return _adapterSerializer; } }`,
+      `${bodyIndent}{ get { ModuleInit_.EnsureInit(); return new(_adapter); } }`,
     );
     this.lines.push("");
 
@@ -738,7 +727,6 @@ class CsharpSourceFileGenerator {
       "Serializer",
       "InitAdapter_",
       "_adapter",
-      "_adapterSerializer",
       "_unrecognized",
     ]);
     for (const field of record.record.fields) {
