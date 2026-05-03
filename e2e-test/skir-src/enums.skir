@@ -66,4 +66,6 @@ enum Status {
 
 enum EnumWithNameConflictB {
   self;
+  kind: string;
+  kind_type: string;
 }

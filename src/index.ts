@@ -320,7 +320,8 @@ class CsharpSourceFileGenerator {
     const variants = record.record.fields;
 
     const fqBase = this.getFullyQualifiedTypeName(record);
-    const kindTypeName = name === "Kind" ? "Kind_" : "Kind";
+    const kindTypeName = name === "KindType" ? "KindType_" : "KindType";
+    const kindPropertyName = name === "Kind" ? "Kind_" : "Kind";
     const qualifiedName = record.recordAncestors
       .map((r) => r.name.text)
       .join(".");
@@ -330,9 +331,9 @@ class CsharpSourceFileGenerator {
     const reservedVariantNames = new Set<string>([
       "Unknown",
       kindTypeName,
+      kindPropertyName,
       "Visitor",
       "Accept",
-      "VariantKind",
       "Serializer",
       "InitAdapter_",
       "_adapter",
@@ -376,7 +377,9 @@ class CsharpSourceFileGenerator {
     this.lines.push(`${bodyIndent}}`);
     this.lines.push("");
 
-    this.lines.push(`${bodyIndent}public ${kindTypeName} VariantKind => kind;`);
+    this.lines.push(
+      `${bodyIndent}public ${kindTypeName} ${kindPropertyName} => kind;`,
+    );
     this.lines.push("");
     this.lines.push(
       `${bodyIndent}public static readonly ${fqBase} Unknown = new(${kindTypeName}.Unknown, null);`,
