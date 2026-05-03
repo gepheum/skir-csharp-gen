@@ -687,25 +687,27 @@ public static class Serializers
 
     private sealed class OptionalRefAdapter_<T>(Serializer<T> inner) : ITypeAdapter<T?> where T : class
     {
+        private readonly ITypeAdapter<T> _inner = inner.Adapter;
+
         public bool IsDefault(T? v) => v is null;
 
         public void ToJson(T? v, string? eolIndent, StringBuilder sb)
         {
             if (v is null) sb.Append("null");
-            else inner.ToJson(v, eolIndent, sb);
+            else _inner.ToJson(v, eolIndent, sb);
         }
 
         public T? FromJson(JsonElement json, bool keep)
         {
             if (json.ValueKind == JsonValueKind.Null) return null;
-            var result = inner.FromJson(json, keep);
-            return inner.IsDefault(result) ? null : result;
+            var result = _inner.FromJson(json, keep);
+            return _inner.IsDefault(result) ? null : result;
         }
 
         public void Encode(T? v, List<byte> output)
         {
             if (v is null) output.Add(255);
-            else inner.Encode(v, output);
+            else _inner.Encode(v, output);
         }
 
         public T? Decode(byte[] data, ref int offset, bool keep)
@@ -715,8 +717,8 @@ public static class Serializers
                 offset++;
                 return null;
             }
-            var result = inner.Decode(data, ref offset, keep);
-            return inner.IsDefault(result) ? null : result;
+            var result = _inner.Decode(data, ref offset, keep);
+            return _inner.IsDefault(result) ? null : result;
         }
 
         public TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
@@ -724,25 +726,27 @@ public static class Serializers
 
     private sealed class RecursiveAdapter_<T>(Serializer<T> inner) : ITypeAdapter<Recursive<T>> where T : struct
     {
+        private readonly ITypeAdapter<T> _inner = inner.Adapter;
+
         public bool IsDefault(Recursive<T> r) =>
-            r.IsDefaultValue || inner.IsDefault(r.Value);
+            r.IsDefaultValue || _inner.IsDefault(r.Value);
 
         public void ToJson(Recursive<T> r, string? eolIndent, StringBuilder sb) =>
-            inner.ToJson(r.IsDefaultValue ? default : r.Value!, eolIndent, sb);
+            _inner.ToJson(r.IsDefaultValue ? default : r.Value!, eolIndent, sb);
 
         public Recursive<T> FromJson(JsonElement json, bool keep)
         {
-            T value = inner.FromJson(json, keep);
-            return inner.IsDefault(value) ? Recursive<T>.DefaultValue : Recursive<T>.FromValue(value);
+            T value = _inner.FromJson(json, keep);
+            return _inner.IsDefault(value) ? Recursive<T>.DefaultValue : Recursive<T>.FromValue(value);
         }
 
         public void Encode(Recursive<T> r, List<byte> output) =>
-            inner.Encode(r.IsDefaultValue ? default : r.Value!, output);
+            _inner.Encode(r.IsDefaultValue ? default : r.Value!, output);
 
         public Recursive<T> Decode(byte[] data, ref int offset, bool keep)
         {
-            T value = inner.Decode(data, ref offset, keep);
-            return inner.IsDefault(value) ? Recursive<T>.DefaultValue : Recursive<T>.FromValue(value);
+            T value = _inner.Decode(data, ref offset, keep);
+            return _inner.IsDefault(value) ? Recursive<T>.DefaultValue : Recursive<T>.FromValue(value);
         }
 
         public TypeDescriptor TypeDescriptor => inner.TypeDescriptor;
@@ -750,25 +754,27 @@ public static class Serializers
 
     private sealed class OptionalValueAdapter_<T>(Serializer<T> inner) : ITypeAdapter<T?> where T : struct
     {
+        private readonly ITypeAdapter<T> _inner = inner.Adapter;
+
         public bool IsDefault(T? v) => v is null;
 
         public void ToJson(T? v, string? eolIndent, StringBuilder sb)
         {
             if (v is null) sb.Append("null");
-            else inner.ToJson(v.Value, eolIndent, sb);
+            else _inner.ToJson(v.Value, eolIndent, sb);
         }
 
         public T? FromJson(JsonElement json, bool keep)
         {
             if (json.ValueKind == JsonValueKind.Null) return null;
-            var result = inner.FromJson(json, keep);
-            return inner.IsDefault(result) ? null : (T?)result;
+            var result = _inner.FromJson(json, keep);
+            return _inner.IsDefault(result) ? null : (T?)result;
         }
 
         public void Encode(T? v, List<byte> output)
         {
             if (v is null) output.Add(255);
-            else inner.Encode(v.Value, output);
+            else _inner.Encode(v.Value, output);
         }
 
         public T? Decode(byte[] data, ref int offset, bool keep)
@@ -778,8 +784,8 @@ public static class Serializers
                 offset++;
                 return null;
             }
-            var result = inner.Decode(data, ref offset, keep);
-            return inner.IsDefault(result) ? null : (T?)result;
+            var result = _inner.Decode(data, ref offset, keep);
+            return _inner.IsDefault(result) ? null : (T?)result;
         }
 
         public TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
@@ -787,6 +793,8 @@ public static class Serializers
 
     private sealed class ArrayAdapter_<T>(Serializer<T> inner, string keyExtractor = "") : ITypeAdapter<ImmutableList<T>>
     {
+        private readonly ITypeAdapter<T> _inner = inner.Adapter;
+
         public bool IsDefault(ImmutableList<T> v) => v.Count == 0;
 
         public void ToJson(ImmutableList<T> v, string? eolIndent, StringBuilder sb)
@@ -797,7 +805,7 @@ public static class Serializers
                 if (i > 0) sb.Append(',');
                 string? childIndent = eolIndent != null ? eolIndent + "  " : null;
                 if (childIndent != null) sb.Append(childIndent);
-                inner.ToJson(v[i], childIndent, sb);
+                _inner.ToJson(v[i], childIndent, sb);
             }
             if (eolIndent != null && v.Count > 0) sb.Append(eolIndent);
             sb.Append(']');
@@ -807,7 +815,7 @@ public static class Serializers
         {
             if (json.ValueKind != JsonValueKind.Array) return ImmutableList<T>.Empty;
             var builder = ImmutableList.CreateBuilder<T>();
-            foreach (var item in json.EnumerateArray()) builder.Add(inner.FromJson(item, keep));
+            foreach (var item in json.EnumerateArray()) builder.Add(_inner.FromJson(item, keep));
             return builder.ToImmutable();
         }
 
@@ -817,7 +825,7 @@ public static class Serializers
             if (n == 0) { output.Add(246); return; }
             if (n <= 3) output.Add((byte)(246 + n));
             else { output.Add(250); EncodeUint32((uint)n, output); }
-            foreach (var item in v) inner.Encode(item, output);
+            foreach (var item in v) _inner.Encode(item, output);
         }
 
         public ImmutableList<T> Decode(byte[] data, ref int offset, bool keep)
@@ -828,7 +836,7 @@ public static class Serializers
 
             int count = wire == 250 ? (int)DecodeNumber(data, ref offset) : wire - 246;
             var builder = ImmutableList.CreateBuilder<T>();
-            for (int i = 0; i < count; i++) builder.Add(inner.Decode(data, ref offset, keep));
+            for (int i = 0; i < count; i++) builder.Add(_inner.Decode(data, ref offset, keep));
             return builder.ToImmutable();
         }
 

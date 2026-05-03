@@ -1,4 +1,6 @@
 // TODO: verify no name conflict between module and class name???
+// KeyedArrays
+// Formatting...
 
 import {
   convertCase,

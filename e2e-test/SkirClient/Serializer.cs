@@ -19,6 +19,8 @@ public sealed class Serializer<T>
         _adapter = adapter;
     }
 
+    internal ITypeAdapter<T> Adapter => _adapter;
+
     /// <summary>
     /// Serializes <paramref name="value"/> to JSON.
     /// <para>
@@ -82,22 +84,6 @@ public sealed class Serializer<T>
         // No magic prefix - treat payload as UTF-8 JSON.
         return FromJson(System.Text.Encoding.UTF8.GetString(bytes), keepUnrecognizedValues);
     }
-
-    // Internal fast-path hooks used by generated adapters.
-    internal bool IsDefault(T value)
-        => _adapter.IsDefault(value);
-
-    internal void ToJson(T value, string? eolIndent, StringBuilder output)
-        => _adapter.ToJson(value, eolIndent, output);
-
-    internal T FromJson(JsonElement json, bool keepUnrecognizedValues)
-        => _adapter.FromJson(json, keepUnrecognizedValues);
-
-    internal void Encode(T value, List<byte> output)
-        => _adapter.Encode(value, output);
-
-    internal T Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
-        => _adapter.Decode(data, ref offset, keepUnrecognizedValues);
 
     /// <summary>Reflection descriptor for this type's schema.</summary>
     public TypeDescriptor TypeDescriptor => _adapter.TypeDescriptor;

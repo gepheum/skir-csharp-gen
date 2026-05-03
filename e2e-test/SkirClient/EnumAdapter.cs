@@ -60,13 +60,13 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
     }
 
     private sealed class WrapperEntry<V>(
-        string name, int number, string doc, Serializer<V> ser,
+        string name, int number, string doc, ITypeAdapter<V> adapter,
         Func<V, T> wrap, Func<T, V> getValue) : IVariantEntry
     {
         public string Name => name;
         public int Number => number;
         public string Doc => doc;
-        public TypeDescriptor? VariantType => ser.TypeDescriptor;
+        public TypeDescriptor? VariantType => adapter.TypeDescriptor;
         public T? Constant => null;
 
         public void ToJson(T value, string? eolIndent, StringBuilder sb)
@@ -82,7 +82,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
                 sb.Append(',');
                 sb.Append(childIndent);
                 sb.Append("\"value\": ");
-                ser.ToJson(payload, childIndent, sb);
+                adapter.ToJson(payload, childIndent, sb);
                 sb.Append(eolIndent);
                 sb.Append('}');
             }
@@ -91,7 +91,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
                 sb.Append('[');
                 sb.Append(number);
                 sb.Append(',');
-                ser.ToJson(payload, null, sb);
+                adapter.ToJson(payload, null, sb);
                 sb.Append(']');
             }
         }
@@ -107,14 +107,14 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
                 Serializers.EncodeUint32_((uint)number, output);
             }
             // Write payload
-            ser.Encode(getValue(value), output);
+            adapter.Encode(getValue(value), output);
         }
 
         public T WrapFromJson(JsonElement json, bool keep) =>
-            wrap(ser.FromJson(json, keep));
+            wrap(adapter.FromJson(json, keep));
 
         public T DecodeWrap(byte[] data, ref int offset, bool keep) =>
-            wrap(ser.Decode(data, ref offset, keep));
+            wrap(adapter.Decode(data, ref offset, keep));
     }
 
     // ---- entry lookup bookkeeping ------------------------------------------
@@ -178,7 +178,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
         var upper = name.ToUpperInvariant();
         if (upper != name) _nameToKindOrdinal[upper] = kindOrdinal;
         while (_kindOrdinalToEntry.Count <= kindOrdinal) _kindOrdinalToEntry.Add(null);
-        _kindOrdinalToEntry[kindOrdinal] = new WrapperEntry<V>(name, number, doc, serializer, wrap, getValue);
+        _kindOrdinalToEntry[kindOrdinal] = new WrapperEntry<V>(name, number, doc, serializer.Adapter, wrap, getValue);
     }
 
     public void AddRemovedNumber(int number)

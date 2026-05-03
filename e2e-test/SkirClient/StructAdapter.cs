@@ -33,22 +33,22 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
     }
 
     private sealed class TypedField<V>(
-        string name, int number, string doc, Serializer<V> ser,
+        string name, int number, string doc, ITypeAdapter<V> adapter,
         Func<T, V> getter, Action<TBuilder, V> setter) : IFieldEntry
     {
         public string Name => name;
         public int Number => number;
         public string Doc => doc;
-        public TypeDescriptor FieldType => ser.TypeDescriptor;
-        public bool IsDefault(T v) => ser.IsDefault(getter(v));
+        public TypeDescriptor FieldType => adapter.TypeDescriptor;
+        public bool IsDefault(T v) => adapter.IsDefault(getter(v));
         public void ToJson(T v, string? eolIndent, StringBuilder sb) =>
-            ser.ToJson(getter(v), eolIndent, sb);
+            adapter.ToJson(getter(v), eolIndent, sb);
         public void SetFromJson(TBuilder b, JsonElement json, bool keep)
-            => setter(b, ser.FromJson(json, keep));
+            => setter(b, adapter.FromJson(json, keep));
         public void Encode(T v, List<byte> output) =>
-            ser.Encode(getter(v), output);
+            adapter.Encode(getter(v), output);
         public void SetFromBytes(TBuilder b, byte[] data, ref int offset, bool keep)
-            => setter(b, ser.Decode(data, ref offset, keep));
+            => setter(b, adapter.Decode(data, ref offset, keep));
     }
 
     // ---- state -------------------------------------------------------------
@@ -88,7 +88,7 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
         Func<T, V> getter, Action<TBuilder, V> setter, string doc = "")
     {
         int idx = _orderedFields.Count;
-        _orderedFields.Add(new TypedField<V>(name, number, doc, serializer, getter, setter));
+        _orderedFields.Add(new TypedField<V>(name, number, doc, serializer.Adapter, getter, setter));
         _nameToIndex[name] = idx;
     }
 
