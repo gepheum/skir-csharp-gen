@@ -1,5 +1,7 @@
 // TODO: verify no name conflict between module and class name (maybe lowercased names)???
 // TODO: toJson or toJsonCode
+// TODO: constant generation, use `const` for real
+// TODO: add internalPrefix to generated struct
 // Formatting...
 
 import {
