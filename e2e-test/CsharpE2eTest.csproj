@@ -5,8 +5,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Treat all files under skirout/ as generated so warnings are suppressed. -->
     <GeneratedFileExtension>.cs</GeneratedFileExtension>
+    <!-- Suppress doc-comment warnings that fire only because GenerateDocumentationFile
+         is required for IDE0005 to work at build time. XML docs are not required for
+         any file in this project. -->
+    <NoWarn>$(NoWarn);1584;1591;1658</NoWarn>
   </PropertyGroup>
 
   <!-- Suppress all warnings in generated skirout files -->

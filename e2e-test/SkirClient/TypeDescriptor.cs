@@ -3,9 +3,6 @@
 // Go implementations so that a descriptor serialized in one language can be
 // deserialized in another.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 

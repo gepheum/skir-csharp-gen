@@ -1,12 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Text.Json;
-using SkirClient.Internal;
 
 namespace SkirClient.Internal;
-
 /// <summary>
 /// A fully functional <see cref="Serializer{T}"/> for a Skir enum type.
 /// <para>

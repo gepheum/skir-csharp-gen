@@ -1,5 +1,6 @@
 // Comments client...
 // Reread everything...
+// Remove unused imports...
 
 import {
   convertCase,
@@ -677,10 +678,8 @@ class CsharpSourceFileGenerator {
           true,
           field.isRecursive,
         );
-        const getter = this.makeStructFieldGetter(field, propertyName);
-        const setter = this.makeStructFieldSetter(field, propertyName);
         this.lines.push(
-          `  ${name}_Adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr}, ${getter}, ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
+          `  ${name}_Adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr}, x => x.${propertyName}, (b, v) => b.${propertyName} = v, ${JSON.stringify(this.getDocText(field.doc))});`,
         );
       }
 
@@ -737,16 +736,6 @@ class CsharpSourceFileGenerator {
         }
         return { field, propertyName };
       });
-  }
-
-  /** Returns a lambda expression `x => …` that retrieves the field value. */
-  private makeStructFieldGetter(_field: Field, propertyName: string): string {
-    return `x => x.${propertyName}`;
-  }
-
-  /** Returns a lambda expression `(b, v) => …` that sets the field value on the builder. */
-  private makeStructFieldSetter(_field: Field, propertyName: string): string {
-    return `(b, v) => b.${propertyName} = v`;
   }
 
   private getStructFieldNameMap(

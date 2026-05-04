@@ -1,5 +1,3 @@
-using System;
-
 namespace SkirClient.Internal;
 
 internal static class BinaryUtils
