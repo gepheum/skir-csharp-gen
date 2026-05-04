@@ -296,6 +296,10 @@ class CsharpSourceFileGenerator {
       ` internal global::SkirClient.Internal.UnrecognizedFields<${name}>? _unrecognized { get; init; }`,
     );
     this.lines.push("");
+    this.lines.push(
+      ` public override string ToString() => Serializer.ToJson(this, readable: true);`,
+    );
+    this.lines.push("");
     const defaultInit =
       fieldDefaults.length > 0
         ? `new() { ${fieldDefaults.map((f) => `${f.propertyName} = ${f.defaultExpr}`).join(", ")} }`
@@ -312,13 +316,10 @@ class CsharpSourceFileGenerator {
     this.lines.push(
       ` { get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
     );
-    this.lines.push(
-      ` public override string ToString() => Serializer.ToJson(this, readable: true);`,
-    );
-    this.lines.push("");
 
     const keyedArrayIndexers = this.computeStructIndexerInfos(record);
     if (keyedArrayIndexers.length > 0) {
+      this.lines.push("");
       for (const indexer of keyedArrayIndexers) {
         this.lines.push(
           ` public static readonly global::SkirClient.Internal.Indexer<${fqName}, ${indexer.keyType}> ${indexer.indexerName} = new(${indexer.keySelector});`,
@@ -477,6 +478,14 @@ class CsharpSourceFileGenerator {
       this.lines.push("");
     }
 
+    this.lines.push(
+      ` internal static ${fqBase} InternalWrapUnrecognized(global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> u) => new(${fqBase}.${kindTypeName}.Unknown, u);`,
+    );
+    this.lines.push(
+      ` internal global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? InternalAsUnknown() => ${kindMemberName} == ${fqBase}.${kindTypeName}.Unknown ? Value_ as global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> : null;`,
+    );
+    this.lines.push("");
+
     this.lines.push(" public interface IVisitor<R>");
     this.lines.push(" {");
     this.lines.push("  R OnUnknown();");
@@ -536,13 +545,8 @@ class CsharpSourceFileGenerator {
     this.lines.push(
       `  ${kindMemberName} == ${kindTypeName}.Unknown ? 0 : global::System.HashCode.Combine(${kindMemberName}, Value_);`,
     );
-    this.lines.push("");
-
     this.lines.push(
-      ` internal static ${fqBase} InternalWrapUnrecognized(global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> u) => new(${fqBase}.${kindTypeName}.Unknown, u);`,
-    );
-    this.lines.push(
-      ` internal global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? InternalAsUnknown() => ${kindMemberName} == ${fqBase}.${kindTypeName}.Unknown ? Value_ as global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> : null;`,
+      ` public override string ToString() => Serializer.ToJson(this, readable: true);`,
     );
     this.lines.push("");
 
@@ -552,9 +556,6 @@ class CsharpSourceFileGenerator {
     );
     this.lines.push(
       ` { get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
-    );
-    this.lines.push(
-      ` public override string ToString() => Serializer.ToJson(this, readable: true);`,
     );
     this.lines.push("");
 
