@@ -66,6 +66,7 @@ enum Status {
 
 enum EnumWithNameConflictA {
   kind_type;
+  value;
 }
 
 enum EnumWithNameConflictB {

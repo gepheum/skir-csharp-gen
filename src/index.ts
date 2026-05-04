@@ -396,7 +396,7 @@ class CsharpSourceFileGenerator {
     const fqBase = this.getFullyQualifiedTypeName(record);
     const kindTypeName = name === "KindType" ? "KindType_" : "KindType";
     const kindMemberName = name === "Kind" ? "Kind_" : "Kind";
-    const kindMemberVisibility = name === "Kind" ? "private" : "public";
+    const kindMemberVisibility = name === "Kind" ? "internal" : "public";
 
     // Pre-compute variant type names to reuse in declarations and _initAdapter.
     const variantInfos = variants.map((v) => ({
@@ -536,9 +536,6 @@ class CsharpSourceFileGenerator {
     this.lines.push("");
 
     this.lines.push(
-      ` internal int InternalGetKindOrdinal() => (int)${kindMemberName};`,
-    );
-    this.lines.push(
       ` internal static ${fqBase} InternalWrapUnrecognized(global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> u) => new(${fqBase}.${kindTypeName}.Unknown, u);`,
     );
     this.lines.push(
@@ -633,7 +630,8 @@ class CsharpSourceFileGenerator {
     this.lines.push(
       ` private static readonly global::SkirClient.Internal.EnumAdapter<${fqBase}> ${name}_Adapter = new(`,
     );
-    this.lines.push(`  x => x.InternalGetKindOrdinal(),`);
+    const kindMemberName = name === "Kind" ? "Kind_" : "Kind";
+    this.lines.push(`  x => (int)x.${kindMemberName},`);
     this.lines.push(`  ${name}.InternalWrapUnrecognized,`);
     this.lines.push(`  x => x.InternalAsUnknown(),`);
     this.lines.push(`  ${fqBase}.Unknown,`);
