@@ -204,6 +204,7 @@ class CsharpSourceFileGenerator {
   /** Emits a public static class `Methods` containing all module-level RPC methods. */
   private writeModuleMethods(): void {
     const { methods } = this.module;
+    if (methods.length === 0) return;
 
     this.lines.push(`// ${"=".repeat(76)}`);
     this.lines.push("// Module methods");
