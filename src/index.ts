@@ -1,6 +1,6 @@
 // Comments client...
+// Public symbols on generated enums
 // Reread everything...
-// Remove unused imports...
 
 import {
   convertCase,
@@ -536,27 +536,13 @@ class CsharpSourceFileGenerator {
     this.lines.push("");
 
     this.lines.push(
-      ` public static int _getKindOrdinalForAdapter(${fqBase} x)`,
-    );
-    this.lines.push(" {");
-    this.lines.push(`  return x.${kindMemberName} switch`);
-    this.lines.push("  {");
-    this.lines.push(`   ${fqBase}.${kindTypeName}.Unknown => 0,`);
-    variantInfos.forEach(({ variant }, i) => {
-      const upperCamel = convertCase(variant.name.text, "UpperCamel");
-      const kindName = variant.type ? `${upperCamel}Wrapper` : upperCamel;
-      this.lines.push(`   ${fqBase}.${kindTypeName}.${kindName} => ${i + 1},`);
-    });
-    this.lines.push(
-      `   _ => throw new global::System.InvalidOperationException("kind=" + x.${kindMemberName}.ToString())`,
-    );
-    this.lines.push("  };");
-    this.lines.push(" }");
-    this.lines.push(
-      ` public static ${fqBase} _wrapUnrecognizedForAdapter(global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> u) => new(${fqBase}.${kindTypeName}.Unknown, u);`,
+      ` internal int InternalGetKindOrdinal() => (int)${kindMemberName};`,
     );
     this.lines.push(
-      ` public static global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? _getUnrecognizedForAdapter(${fqBase} x) => x.${kindMemberName} == ${fqBase}.${kindTypeName}.Unknown ? x.Value_ as global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> : null;`,
+      ` internal static ${fqBase} InternalWrapUnrecognized(global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> u) => new(${fqBase}.${kindTypeName}.Unknown, u);`,
+    );
+    this.lines.push(
+      ` internal global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? InternalAsUnknown() => ${kindMemberName} == ${fqBase}.${kindTypeName}.Unknown ? Value_ as global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> : null;`,
     );
     this.lines.push("");
 
@@ -647,9 +633,9 @@ class CsharpSourceFileGenerator {
     this.lines.push(
       ` private static readonly global::SkirClient.Internal.EnumAdapter<${fqBase}> ${name}_Adapter = new(`,
     );
-    this.lines.push(`  ${name}._getKindOrdinalForAdapter,`);
-    this.lines.push(`  ${name}._wrapUnrecognizedForAdapter,`);
-    this.lines.push(`  ${name}._getUnrecognizedForAdapter,`);
+    this.lines.push(`  x => x.InternalGetKindOrdinal(),`);
+    this.lines.push(`  ${name}.InternalWrapUnrecognized,`);
+    this.lines.push(`  x => x.InternalAsUnknown(),`);
     this.lines.push(`  ${fqBase}.Unknown,`);
     this.lines.push(`  ${JSON.stringify(modulePath)},`);
     this.lines.push(`  ${JSON.stringify(qualifiedName)},`);

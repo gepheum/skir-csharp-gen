@@ -64,6 +64,10 @@ enum Status {
   error: Error;
 }
 
+enum EnumWithNameConflictA {
+  kind_type;
+}
+
 enum EnumWithNameConflictB {
   self;
   kind: string;
