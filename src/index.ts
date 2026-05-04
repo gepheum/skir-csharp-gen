@@ -146,12 +146,14 @@ class CsharpSourceFileGenerator {
       this.lines.push("}");
     }
 
-    return this.lines
-      .map((line) => {
-        const leading = line.match(/^ */)![0].length;
-        return " ".repeat(leading * 4) + line.slice(leading);
-      })
-      .join("\n");
+    return (
+      this.lines
+        .map((line) => {
+          const leading = line.match(/^ */)![0].length;
+          return " ".repeat(leading * 4) + line.slice(leading);
+        })
+        .join("\n") + "\n"
+    );
   }
 
   /** Emits a public static class `Consts` containing all module-level constants. */
