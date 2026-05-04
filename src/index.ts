@@ -557,7 +557,6 @@ class CsharpSourceFileGenerator {
     this.lines.push(
       ` { get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
     );
-    this.lines.push("");
 
     this.lines.push("}");
   }
