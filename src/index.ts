@@ -153,7 +153,7 @@ class CsharpSourceFileGenerator {
 
   /** Emits a public static class `Consts` containing all module-level constants. */
   private writeModuleConstants(): void {
-    const constants = this.module.constants;
+    const {constants} = this.module;
     if (constants.length === 0) return;
 
     this.lines.push(`// ${"=".repeat(76)}`);
@@ -203,15 +203,7 @@ class CsharpSourceFileGenerator {
 
   /** Emits a public static class `Methods` containing all module-level RPC methods. */
   private writeModuleMethods(): void {
-    const methods = this.module.methods.filter(
-      (
-        m,
-      ): m is Method & {
-        requestType: NonNullable<Method["requestType"]>;
-        responseType: NonNullable<Method["responseType"]>;
-      } => m.requestType !== undefined && m.responseType !== undefined,
-    );
-    if (methods.length === 0) return;
+    const {methods} = this.module;
 
     this.lines.push(`// ${"=".repeat(76)}`);
     this.lines.push("// Module methods");
@@ -223,14 +215,14 @@ class CsharpSourceFileGenerator {
     for (const method of methods) {
       const propName = convertCase(method.name.text, "UpperCamel");
 
-      const requestType = this.typeSpeller.getCsharpType(method.requestType);
-      const responseType = this.typeSpeller.getCsharpType(method.responseType);
+      const requestType = this.typeSpeller.getCsharpType(method.requestType!);
+      const responseType = this.typeSpeller.getCsharpType(method.responseType!);
       const requestSerExpr = this.typeSpeller.getSerializerExpr(
-        method.requestType,
+        method.requestType!,
         false,
       );
       const responseSerExpr = this.typeSpeller.getSerializerExpr(
-        method.responseType,
+        method.responseType!,
         false,
       );
 
