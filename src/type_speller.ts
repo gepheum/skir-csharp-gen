@@ -25,7 +25,7 @@ export class TypeSpeller {
       }
       case "array": {
         const itemType = this.getCsharpType(type.item);
-        return `global::System.Collections.Immutable.ImmutableList<${itemType}>`;
+        return `global::System.Collections.Immutable.ImmutableArray<${itemType}>`;
       }
       case "optional": {
         const otherType = this.getCsharpType(type.other);
@@ -110,7 +110,7 @@ export class TypeSpeller {
       }
       case "array": {
         const itemType = this.getCsharpType(type.item);
-        return `global::System.Collections.Immutable.ImmutableList<${itemType}>.Empty`;
+        return `global::System.Collections.Immutable.ImmutableArray<${itemType}>.Empty`;
       }
       case "optional": {
         return "null";
@@ -214,8 +214,10 @@ export class TypeSpeller {
       case "optional": {
         const inner = type.other;
         const innerExpr = this.getSerializerExprInner(inner, initCtx);
-        // Determine if inner type is a value type (struct/primitive) or ref type (enum/string/array).
+        // Determine if inner type is a value type (struct/primitive) or ref type (enum/string).
+        // ImmutableArray<T> is a struct, so arrays are also value types.
         const isValueType =
+          inner.kind === "array" ||
           (inner.kind === "record" &&
             this.recordMap.get(inner.key)!.record.recordType === "struct") ||
           (inner.kind === "primitive" && inner.primitive !== "string");

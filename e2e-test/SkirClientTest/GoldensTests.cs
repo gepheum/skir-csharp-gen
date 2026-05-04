@@ -23,7 +23,7 @@ public sealed class GoldensTests
 
         // Verify test numbers are sequential.
         int firstNumber = unitTests[0].TestNumber;
-        for (int i = 0; i < unitTests.Count; i++)
+        for (int i = 0; i < unitTests.Length; i++)
         {
             Assert.Equal(firstNumber + i, unitTests[i].TestNumber);
         }
@@ -408,10 +408,10 @@ public sealed class GoldensTests
     private static void VerifyReserializeLargeArray(Assertion_ReserializeLargeArray input)
     {
         var n = input.NumItems;
-        var array = Enumerable.Repeat(1, n).ToImmutableList();
+        var array = Enumerable.Repeat(1, n).ToImmutableArray();
         var ser = Serializers.Array(Serializers.Int32);
 
-        bool IsCorrect(ImmutableList<int> v) => v.Count == n && v.All(x => x == 1);
+        bool IsCorrect(ImmutableArray<int> v) => v.Length == n && v.All(x => x == 1);
 
         // Dense JSON round-trip.
         {
@@ -420,7 +420,7 @@ public sealed class GoldensTests
             if (!IsCorrect(roundTrip))
             {
                 throw new GoldenAssertionException(
-                    $"large array dense JSON round-trip mismatch (len={roundTrip.Count}, all_ones={roundTrip.All(x => x == 1)})");
+                    $"large array dense JSON round-trip mismatch (len={roundTrip.Length}, all_ones={roundTrip.All(x => x == 1)})");
             }
         }
 
@@ -431,7 +431,7 @@ public sealed class GoldensTests
             if (!IsCorrect(roundTrip))
             {
                 throw new GoldenAssertionException(
-                    $"large array readable JSON round-trip mismatch (len={roundTrip.Count}, all_ones={roundTrip.All(x => x == 1)})");
+                    $"large array readable JSON round-trip mismatch (len={roundTrip.Length}, all_ones={roundTrip.All(x => x == 1)})");
             }
         }
 
@@ -448,7 +448,7 @@ public sealed class GoldensTests
             if (!IsCorrect(roundTrip))
             {
                 throw new GoldenAssertionException(
-                    $"large array bytes round-trip mismatch (len={roundTrip.Count}, all_ones={roundTrip.All(x => x == 1)})");
+                    $"large array bytes round-trip mismatch (len={roundTrip.Length}, all_ones={roundTrip.All(x => x == 1)})");
             }
         }
     }

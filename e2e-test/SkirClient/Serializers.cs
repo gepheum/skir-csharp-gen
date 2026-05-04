@@ -32,8 +32,8 @@ public static class Serializers
     public static Serializer<T?> OptionalValue<T>(Serializer<T> inner) where T : struct
         => new(new OptionalValueAdapter_<T>(inner));
 
-    /// <summary>Serializer for a read-only list of values.</summary>
-    public static Serializer<ImmutableList<T>> Array<T>(Serializer<T> inner, string keyExtractor = "")
+    /// <summary>Serializer for a read-only array of values.</summary>
+    public static Serializer<ImmutableArray<T>> Array<T>(Serializer<T> inner, string keyExtractor = "")
         => new(new ArrayAdapter_<T>(inner, keyExtractor));
 
     /// <summary>Serializer for a recursive struct field (<see cref="Recursive{T}"/>).</summary>
@@ -789,51 +789,51 @@ public static class Serializers
         public TypeDescriptor TypeDescriptor { get; } = new OptionalDescriptor(inner.TypeDescriptor);
     }
 
-    private sealed class ArrayAdapter_<T>(Serializer<T> inner, string keyExtractor = "") : ITypeAdapter<ImmutableList<T>>
+    private sealed class ArrayAdapter_<T>(Serializer<T> inner, string keyExtractor = "") : ITypeAdapter<ImmutableArray<T>>
     {
         private readonly ITypeAdapter<T> _inner = inner.Adapter;
 
-        public bool IsDefault(ImmutableList<T> v) => v.Count == 0;
+        public bool IsDefault(ImmutableArray<T> v) => v.Length == 0;
 
-        public void ToJson(ImmutableList<T> v, string? eolIndent, StringBuilder sb)
+        public void ToJson(ImmutableArray<T> v, string? eolIndent, StringBuilder sb)
         {
             sb.Append('[');
-            for (int i = 0; i < v.Count; i++)
+            for (int i = 0; i < v.Length; i++)
             {
                 if (i > 0) sb.Append(',');
                 string? childIndent = eolIndent != null ? eolIndent + "  " : null;
                 if (childIndent != null) sb.Append(childIndent);
                 _inner.ToJson(v[i], childIndent, sb);
             }
-            if (eolIndent != null && v.Count > 0) sb.Append(eolIndent);
+            if (eolIndent != null && v.Length > 0) sb.Append(eolIndent);
             sb.Append(']');
         }
 
-        public ImmutableList<T> FromJson(JsonElement json, bool keep)
+        public ImmutableArray<T> FromJson(JsonElement json, bool keep)
         {
-            if (json.ValueKind != JsonValueKind.Array) return ImmutableList<T>.Empty;
-            var builder = ImmutableList.CreateBuilder<T>();
+            if (json.ValueKind != JsonValueKind.Array) return [];
+            var builder = ImmutableArray.CreateBuilder<T>();
             foreach (var item in json.EnumerateArray()) builder.Add(_inner.FromJson(item, keep));
             return builder.ToImmutable();
         }
 
-        public void Encode(ImmutableList<T> v, List<byte> output)
+        public void Encode(ImmutableArray<T> v, List<byte> output)
         {
-            int n = v.Count;
+            int n = v.Length;
             if (n == 0) { output.Add(246); return; }
             if (n <= 3) output.Add((byte)(246 + n));
             else { output.Add(250); EncodeUint32((uint)n, output); }
             foreach (var item in v) _inner.Encode(item, output);
         }
 
-        public ImmutableList<T> Decode(byte[] data, ref int offset, bool keep)
+        public ImmutableArray<T> Decode(byte[] data, ref int offset, bool keep)
         {
-            if (offset >= data.Length) return ImmutableList<T>.Empty;
+            if (offset >= data.Length) return [];
             byte wire = ReadU8(data, ref offset);
-            if (wire == 0 || wire == 246) return ImmutableList<T>.Empty;
+            if (wire == 0 || wire == 246) return [];
 
             int count = wire == 250 ? (int)DecodeNumber(data, ref offset) : wire - 246;
-            var builder = ImmutableList.CreateBuilder<T>();
+            var builder = ImmutableArray.CreateBuilder<T>(count);
             for (int i = 0; i < count; i++) builder.Add(_inner.Decode(data, ref offset, keep));
             return builder.ToImmutable();
         }

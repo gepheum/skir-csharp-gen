@@ -183,7 +183,7 @@ public sealed class EnumTests
     public void RoundTrip_Json_NestedWrapperVariant()
     {
         var pair = new JsonValue_Pair { Name = "key", Value = JsonValue.WrapBoolean(false) };
-        var original = JsonValue.WrapObject(ImmutableList.Create(pair));
+        var original = JsonValue.WrapObject([pair]);
         string json = JsonValue.Serializer.ToJson(original);
         var decoded = JsonValue.Serializer.FromJson(json);
         Assert.Equal(JsonValue.KindType.ObjectWrapper, decoded.Kind);
@@ -216,7 +216,7 @@ public sealed class EnumTests
         public string OnBoolean(bool value) => $"boolean:{value}";
         public string OnNumber(double value) => $"number:{value}";
         public string OnString(string value) => $"string:{value}";
-        public string OnArray(ImmutableList<JsonValue> value) => $"array[{value.Count}]";
-        public string OnObject(ImmutableList<JsonValue_Pair> value) => $"object[{value.Count}]";
+        public string OnArray(ImmutableArray<JsonValue> value) => $"array[{value.Length}]";
+        public string OnObject(ImmutableArray<JsonValue_Pair> value) => $"object[{value.Length}]";
     }
 }

@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using SkirClient;
 using Skirout_Enums;
 using Skirout_Structs;
@@ -14,7 +13,7 @@ public sealed class StructKeyedArrayTests
         Item beta = CreateItem(boolValue: false, stringValue: "beta", int32Value: 2);
         Items items = Items.Default with
         {
-            ArrayWithStringKey = ImmutableList.Create(alpha, beta),
+            ArrayWithStringKey = [alpha, beta],
         };
 
         Assert.Equal(beta, items.ArrayWithStringKey_FindByKey("beta"));
@@ -27,7 +26,7 @@ public sealed class StructKeyedArrayTests
         Item alpha = CreateItem(boolValue: true, stringValue: "alpha", int32Value: 1);
         Items items = Items.Default with
         {
-            ArrayWithStringKey = ImmutableList.Create(alpha),
+            ArrayWithStringKey = [alpha],
         };
 
         Assert.Equal(alpha, items.ArrayWithStringKey_FindByKeyOrDefault("alpha"));

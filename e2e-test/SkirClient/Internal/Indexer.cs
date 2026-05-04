@@ -1,15 +1,14 @@
 using System.Collections.Immutable;
-using System.Runtime.CompilerServices;
 
 namespace SkirClient.Internal;
 
 /// <summary>
-/// Builds and caches per-list index maps.
+/// Builds and caches per-array index maps.
 /// </summary>
 public sealed class Indexer<TValue, TKey> where TKey : notnull
 {
     private readonly Func<TValue, TKey> _keySelector;
-    private readonly ConditionalWeakTable<ImmutableList<TValue>, ImmutableDictionary<TKey, TValue>> _cache = [];
+    private readonly Dictionary<ImmutableArray<TValue>, ImmutableDictionary<TKey, TValue>> _cache = [];
     private readonly System.Threading.Lock _mutex = new();
 
     public Indexer(Func<TValue, TKey> keySelector)
@@ -17,10 +16,8 @@ public sealed class Indexer<TValue, TKey> where TKey : notnull
         _keySelector = keySelector ?? throw new ArgumentNullException(nameof(keySelector));
     }
 
-    public ImmutableDictionary<TKey, TValue> Index(ImmutableList<TValue> values)
+    public ImmutableDictionary<TKey, TValue> Index(ImmutableArray<TValue> values)
     {
-        ArgumentNullException.ThrowIfNull(values);
-
         lock (_mutex)
         {
             if (_cache.TryGetValue(values, out var cached))
@@ -29,12 +26,12 @@ public sealed class Indexer<TValue, TKey> where TKey : notnull
             }
 
             var map = BuildIndex(values);
-            _cache.Add(values, map);
+            _cache[values] = map;
             return map;
         }
     }
 
-    private ImmutableDictionary<TKey, TValue> BuildIndex(ImmutableList<TValue> values)
+    private ImmutableDictionary<TKey, TValue> BuildIndex(ImmutableArray<TValue> values)
     {
         var builder = ImmutableDictionary.CreateBuilder<TKey, TValue>();
         foreach (var value in values)

@@ -1,5 +1,5 @@
+// Generate C# doc
 // Comments client...
-// ImmutableList -> ImmutableArray
 // Public symbols on generated enums
 // Reread everything...
 
