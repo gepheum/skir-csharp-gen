@@ -1,4 +1,5 @@
 // Comments client...
+// ImmutableList -> ImmutableArray
 // Public symbols on generated enums
 // Reread everything...
 
@@ -152,7 +153,8 @@ class CsharpSourceFileGenerator {
           const leading = line.match(/^ */)![0].length;
           return " ".repeat(leading * 4) + line.slice(leading);
         })
-        .join("\n") + "\n"
+        .join("\n")
+        .replace(/\n+(\n *})/g, "\n$1") + "\n"
     );
   }
 
