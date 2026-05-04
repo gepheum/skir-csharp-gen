@@ -1,5 +1,5 @@
-// TODO: toJson or toJsonCode
-// Formatting... Use just one space indent...
+// Comments client...
+// Reread everything...
 
 import {
   convertCase,
@@ -7,7 +7,6 @@ import {
   type Constant,
   type Field,
   type FieldPath,
-  type Method,
   type Module,
   type PrimitiveType,
   type RecordKey,
@@ -104,7 +103,7 @@ class CsharpSourceFileGenerator {
     );
 
     for (const record of moduleRecords) {
-      this.writeRecord(record, 0);
+      this.writeRecord(record);
     }
 
     // Emit module-level RPC methods (if any).
@@ -124,36 +123,39 @@ class CsharpSourceFileGenerator {
 
       for (const record of moduleRecords) {
         if (record.record.recordType === "struct") {
-          this.writeModuleInitBuilder(record, 1);
+          this.writeModuleInitBuilder(record);
         }
       }
 
       for (const record of moduleRecords) {
-        this.writeModuleInitAdapterFields(record, 1);
+        this.writeModuleInitAdapterFields(record);
       }
 
       this.lines.push(
-        "    private static readonly global::System.Lazy<bool> _lazy = new(() =>",
+        " private static readonly global::System.Lazy<bool> _lazy = new(() =>",
       );
-      this.lines.push("    {");
+      this.lines.push(" {");
       for (const record of moduleRecords) {
-        this.writeModuleInitAdapterInit(record, 2);
+        this.writeModuleInitAdapterInit(record);
       }
-      this.lines.push("        return true;");
-      this.lines.push("    });");
-      this.lines.push(
-        "    public static void _ensureInit() => _ = _lazy.Value;",
-      );
+      this.lines.push("  return true;");
+      this.lines.push(" });");
+      this.lines.push(" public static void _ensureInit() => _ = _lazy.Value;");
 
       this.lines.push("}");
     }
 
-    return this.lines.join("\n");
+    return this.lines
+      .map((line) => {
+        const leading = line.match(/^ */)![0].length;
+        return " ".repeat(leading * 4) + line.slice(leading);
+      })
+      .join("\n");
   }
 
   /** Emits a public static class `Consts` containing all module-level constants. */
   private writeModuleConstants(): void {
-    const {constants} = this.module;
+    const { constants } = this.module;
     if (constants.length === 0) return;
 
     this.lines.push(`// ${"=".repeat(76)}`);
@@ -170,7 +172,7 @@ class CsharpSourceFileGenerator {
       if (constLiteral !== null) {
         // Simple types can use the `const` keyword.
         this.lines.push(
-          `    public const ${constLiteral.csharpType} ${propName} = ${constLiteral.literal};`,
+          ` public const ${constLiteral.csharpType} ${propName} = ${constLiteral.literal};`,
         );
         this.lines.push("");
       } else {
@@ -185,13 +187,11 @@ class CsharpSourceFileGenerator {
         const lazyField = `_${propName.charAt(0).toLowerCase()}${propName.slice(1)}_Lazy`;
 
         this.lines.push(
-          `    private static readonly global::System.Lazy<${csharpType}> ${lazyField}`,
+          ` private static readonly global::System.Lazy<${csharpType}> ${lazyField}`,
         );
+        this.lines.push(`  = new(() => ${serExpr}.FromJson(${jsonLiteral}));`);
         this.lines.push(
-          `        = new(() => ${serExpr}.FromJson(${jsonLiteral}));`,
-        );
-        this.lines.push(
-          `    public static ${csharpType} ${propName} => ${lazyField}.Value;`,
+          ` public static ${csharpType} ${propName} => ${lazyField}.Value;`,
         );
         this.lines.push("");
       }
@@ -203,7 +203,7 @@ class CsharpSourceFileGenerator {
 
   /** Emits a public static class `Methods` containing all module-level RPC methods. */
   private writeModuleMethods(): void {
-    const {methods} = this.module;
+    const { methods } = this.module;
 
     this.lines.push(`// ${"=".repeat(76)}`);
     this.lines.push("// Module methods");
@@ -230,19 +230,17 @@ class CsharpSourceFileGenerator {
       const lazyField = `_${propName.charAt(0).toLowerCase()}${propName.slice(1)}_Lazy`;
 
       this.lines.push(
-        `    private static readonly global::System.Lazy<${methodType}> ${lazyField}`,
+        ` private static readonly global::System.Lazy<${methodType}> ${lazyField}`,
       );
-      this.lines.push("        = new(() => new(");
-      this.lines.push(`            ${JSON.stringify(method.name.text)},`);
-      this.lines.push(`            ${method.number},`);
+      this.lines.push("  = new(() => new(");
+      this.lines.push(`   ${JSON.stringify(method.name.text)},`);
+      this.lines.push(`   ${method.number},`);
+      this.lines.push(`   ${JSON.stringify(this.getDocText(method.doc))},`);
+      this.lines.push(`   ${requestSerExpr},`);
+      this.lines.push(`   ${responseSerExpr}`);
+      this.lines.push("  ));");
       this.lines.push(
-        `            ${JSON.stringify(this.getDocText(method.doc))},`,
-      );
-      this.lines.push(`            ${requestSerExpr},`);
-      this.lines.push(`            ${responseSerExpr}`);
-      this.lines.push("        ));");
-      this.lines.push(
-        `    public static ${methodType} ${propName} => ${lazyField}.Value;`,
+        ` public static ${methodType} ${propName} => ${lazyField}.Value;`,
       );
       this.lines.push("");
     }
@@ -251,39 +249,30 @@ class CsharpSourceFileGenerator {
     this.lines.push("");
   }
 
-  private writeRecord(record: RecordLocation, indentLevel: number): void {
-    const indent = "    ".repeat(indentLevel);
+  private writeRecord(record: RecordLocation): void {
     const name = getTypeName(record);
     const { recordType } = record.record;
 
-    this.lines.push(`${indent}// ${"=".repeat(76)}`);
+    this.lines.push(`// ${"=".repeat(76)}`);
     this.lines.push(
-      `${indent}// ${recordType} ${record.recordAncestors.map((r) => r.name.text).join(".")}`,
+      `// ${recordType} ${record.recordAncestors.map((r) => r.name.text).join(".")}`,
     );
-    this.lines.push(`${indent}// ${"=".repeat(76)}`);
+    this.lines.push(`// ${"=".repeat(76)}`);
     this.lines.push("");
 
     if (recordType === "struct") {
-      this.writeStruct(record, name, indentLevel);
+      this.writeStruct(record, name);
     } else {
-      this.writeEnum(record, name, indentLevel);
+      this.writeEnum(record, name);
     }
     this.lines.push("");
   }
 
-  private writeStruct(
-    record: RecordLocation,
-    name: string,
-    indentLevel: number,
-  ): void {
-    const indent = "    ".repeat(indentLevel);
-    const bodyIndent = "    ".repeat(indentLevel + 1);
-    const body2Indent = "    ".repeat(indentLevel + 2);
-
+  private writeStruct(record: RecordLocation, name: string): void {
     const fqName = this.getFullyQualifiedTypeName(record);
 
-    this.lines.push(`${indent}public readonly record struct ${name}`);
-    this.lines.push(`${indent}{`);
+    this.lines.push(`public readonly record struct ${name}`);
+    this.lines.push("{");
 
     // Pre-compute property names to reuse in both builder, field declarations, and _initAdapter.
     const fieldInfos = this.computeFieldInfos(record, name);
@@ -297,12 +286,12 @@ class CsharpSourceFileGenerator {
       const defaultExpr = this.typeSpeller.getFieldDefaultExpr(field);
       fieldDefaults.push({ propertyName, defaultExpr });
       this.lines.push(
-        `${bodyIndent}public required ${fieldType} ${propertyName} { get; init; }`,
+        ` public required ${fieldType} ${propertyName} { get; init; }`,
       );
     }
 
     this.lines.push(
-      `${bodyIndent}internal global::SkirClient.Internal.UnrecognizedFields<${name}>? _unrecognized { get; init; }`,
+      ` internal global::SkirClient.Internal.UnrecognizedFields<${name}>? _unrecognized { get; init; }`,
     );
     this.lines.push("");
     const defaultInit =
@@ -310,16 +299,16 @@ class CsharpSourceFileGenerator {
         ? `new() { ${fieldDefaults.map((f) => `${f.propertyName} = ${f.defaultExpr}`).join(", ")} }`
         : "new()";
     this.lines.push(
-      `${bodyIndent}public static readonly ${name} Default = ${defaultInit};`,
+      ` public static readonly ${name} Default = ${defaultInit};`,
     );
     this.lines.push("");
 
     // Serializer property.
     this.lines.push(
-      `${bodyIndent}public static global::SkirClient.Serializer<${fqName}> Serializer`,
+      ` public static global::SkirClient.Serializer<${fqName}> Serializer`,
     );
     this.lines.push(
-      `${bodyIndent}{ get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
+      ` { get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
     );
     this.lines.push("");
 
@@ -327,7 +316,7 @@ class CsharpSourceFileGenerator {
     if (keyedArrayIndexers.length > 0) {
       for (const indexer of keyedArrayIndexers) {
         this.lines.push(
-          `${bodyIndent}public static readonly global::SkirClient.Internal.Indexer<${fqName}, ${indexer.keyType}> ${indexer.indexerName} = new(${indexer.keySelector});`,
+          ` public static readonly global::SkirClient.Internal.Indexer<${fqName}, ${indexer.keyType}> ${indexer.indexerName} = new(${indexer.keySelector});`,
         );
       }
       this.lines.push("");
@@ -370,44 +359,36 @@ class CsharpSourceFileGenerator {
       const findByKeyOrDefaultName = `${propertyName}_FindByKeyOrDefault`;
 
       this.lines.push(
-        `${bodyIndent}public ${itemOptionalType} ${findByKeyName}(${keyType} key)`,
+        ` public ${itemOptionalType} ${findByKeyName}(${keyType} key)`,
       );
-      this.lines.push(`${bodyIndent}{`);
+      this.lines.push(" {");
       this.lines.push(
-        `${body2Indent}var indexed = ${itemIndexerRef}.Index(${propertyName});`,
+        `  var indexed = ${itemIndexerRef}.Index(${propertyName});`,
       );
       this.lines.push(
-        `${body2Indent}return indexed.TryGetValue(key, out var value) ? value : null;`,
+        `  return indexed.TryGetValue(key, out var value) ? value : null;`,
       );
-      this.lines.push(`${bodyIndent}}`);
+      this.lines.push(" }");
       this.lines.push("");
 
       this.lines.push(
-        `${bodyIndent}public ${itemType} ${findByKeyOrDefaultName}(${keyType} key)`,
+        ` public ${itemType} ${findByKeyOrDefaultName}(${keyType} key)`,
       );
-      this.lines.push(`${bodyIndent}{`);
+      this.lines.push(" {");
       this.lines.push(
-        `${body2Indent}var indexed = ${itemIndexerRef}.Index(${propertyName});`,
+        `  var indexed = ${itemIndexerRef}.Index(${propertyName});`,
       );
       this.lines.push(
-        `${body2Indent}return indexed.TryGetValue(key, out var value) ? value : ${itemDefaultExpr};`,
+        `  return indexed.TryGetValue(key, out var value) ? value : ${itemDefaultExpr};`,
       );
-      this.lines.push(`${bodyIndent}}`);
+      this.lines.push(" }");
       this.lines.push("");
     }
 
-    this.lines.push(`${indent}}`);
+    this.lines.push("}");
   }
 
-  private writeEnum(
-    record: RecordLocation,
-    name: string,
-    indentLevel: number,
-  ): void {
-    const indent = "    ".repeat(indentLevel);
-    const bodyIndent = "    ".repeat(indentLevel + 1);
-    const body2Indent = "    ".repeat(indentLevel + 2);
-    const body3Indent = "    ".repeat(indentLevel + 3);
+  private writeEnum(record: RecordLocation, name: string): void {
     const variants = record.record.fields;
 
     const fqBase = this.getFullyQualifiedTypeName(record);
@@ -422,38 +403,36 @@ class CsharpSourceFileGenerator {
       prefixedName: convertCase(v.name.text, "UpperCamel"),
     }));
 
-    this.lines.push(`${indent}public sealed record ${name}`);
-    this.lines.push(`${indent}{`);
+    this.lines.push(`public sealed record ${name}`);
+    this.lines.push("{");
 
-    this.lines.push(`${bodyIndent}public enum ${kindTypeName}`);
-    this.lines.push(`${bodyIndent}{`);
-    this.lines.push(`${body2Indent}Unknown,`);
+    this.lines.push(` public enum ${kindTypeName}`);
+    this.lines.push(" {");
+    this.lines.push("  Unknown,");
     variantInfos.forEach(({ variant }, i) => {
       const suffix = i < variantInfos.length - 1 ? "," : "";
       const upperCamel = convertCase(variant.name.text, "UpperCamel");
       const kindName = variant.type ? `${upperCamel}Wrapper` : upperCamel;
-      this.lines.push(`${body2Indent}${kindName}${suffix}`);
+      this.lines.push(`  ${kindName}${suffix}`);
     });
-    this.lines.push(`${bodyIndent}}`);
+    this.lines.push(" }");
     this.lines.push("");
 
     this.lines.push(
-      `${bodyIndent}${kindMemberVisibility} ${kindTypeName} ${kindMemberName} { get; init; }`,
+      ` ${kindMemberVisibility} ${kindTypeName} ${kindMemberName} { get; init; }`,
     );
-    this.lines.push(`${bodyIndent}private object? Value_ { get; init; }`);
+    this.lines.push(" private object? Value_ { get; init; }");
+    this.lines.push("");
+
+    this.lines.push(` private ${name}(${kindTypeName} kind, object? value)`);
+    this.lines.push(" {");
+    this.lines.push(`  this.${kindMemberName} = kind;`);
+    this.lines.push(`  this.Value_ = value;`);
+    this.lines.push(" }");
     this.lines.push("");
 
     this.lines.push(
-      `${bodyIndent}private ${name}(${kindTypeName} kind, object? value)`,
-    );
-    this.lines.push(`${bodyIndent}{`);
-    this.lines.push(`${body2Indent}this.${kindMemberName} = kind;`);
-    this.lines.push(`${body2Indent}this.Value_ = value;`);
-    this.lines.push(`${bodyIndent}}`);
-    this.lines.push("");
-
-    this.lines.push(
-      `${bodyIndent}public static readonly ${fqBase} Unknown = new(${kindTypeName}.Unknown, null);`,
+      ` public static readonly ${fqBase} Unknown = new(${kindTypeName}.Unknown, null);`,
     );
 
     for (const { variant, memberName } of variantInfos) {
@@ -461,7 +440,7 @@ class CsharpSourceFileGenerator {
         const upperCamel = convertCase(variant.name.text, "UpperCamel");
         const kindName = upperCamel;
         this.lines.push(
-          `${bodyIndent}public static readonly ${fqBase} ${memberName} = new(${kindTypeName}.${kindName}, null);`,
+          ` public static readonly ${fqBase} ${memberName} = new(${kindTypeName}.${kindName}, null);`,
         );
       }
     }
@@ -478,160 +457,142 @@ class CsharpSourceFileGenerator {
       const kindName = `${convertCase(variant.name.text, "UpperCamel")}Wrapper`;
 
       this.lines.push(
-        `${bodyIndent}public static ${fqBase} Wrap${prefixedName}(${payloadType} value) => new(${kindTypeName}.${kindName}, value);`,
+        ` public static ${fqBase} Wrap${prefixedName}(${payloadType} value) => new(${kindTypeName}.${kindName}, value);`,
       );
-      this.lines.push(`${bodyIndent}public ${payloadType} As${prefixedName}()`);
-      this.lines.push(`${bodyIndent}{`);
+      this.lines.push(` public ${payloadType} As${prefixedName}()`);
+      this.lines.push(" {");
       this.lines.push(
-        `${body2Indent}if (${kindMemberName} != ${kindTypeName}.${kindName})`,
+        `  if (${kindMemberName} != ${kindTypeName}.${kindName})`,
       );
       this.lines.push(
-        `${body3Indent}throw new global::System.InvalidOperationException("kind=" + ${kindMemberName}.ToString());`,
+        `   throw new global::System.InvalidOperationException("kind=" + ${kindMemberName}.ToString());`,
       );
-      this.lines.push(`${body2Indent}return (${payloadType})Value_!;`);
-      this.lines.push(`${bodyIndent}}`);
+      this.lines.push(`  return (${payloadType})Value_!;`);
+      this.lines.push(" }");
       this.lines.push("");
     }
 
-    this.lines.push(`${bodyIndent}public interface IVisitor<R>`);
-    this.lines.push(`${bodyIndent}{`);
-    this.lines.push(`${body2Indent}R OnUnknown();`);
+    this.lines.push(" public interface IVisitor<R>");
+    this.lines.push(" {");
+    this.lines.push("  R OnUnknown();");
     for (const { variant, prefixedName } of variantInfos) {
       if (variant.type) {
         const payloadType = this.typeSpeller.getCsharpType(variant.type);
-        this.lines.push(
-          `${body2Indent}R On${prefixedName}(${payloadType} value);`,
-        );
+        this.lines.push(`  R On${prefixedName}(${payloadType} value);`);
       } else {
-        this.lines.push(`${body2Indent}R On${prefixedName}();`);
+        this.lines.push(`  R On${prefixedName}();`);
       }
     }
-    this.lines.push(`${bodyIndent}}`);
+    this.lines.push(" }");
     this.lines.push("");
 
-    this.lines.push(`${bodyIndent}public R Accept<R>(IVisitor<R> visitor)`);
-    this.lines.push(`${bodyIndent}{`);
-    this.lines.push(`${body2Indent}return ${kindMemberName} switch`);
-    this.lines.push(`${body2Indent}{`);
-    this.lines.push(
-      `${body3Indent}${kindTypeName}.Unknown => visitor.OnUnknown(),`,
-    );
+    this.lines.push(` public R Accept<R>(IVisitor<R> visitor)`);
+    this.lines.push(" {");
+    this.lines.push(`  return ${kindMemberName} switch`);
+    this.lines.push("  {");
+    this.lines.push(`   ${kindTypeName}.Unknown => visitor.OnUnknown(),`);
     variantInfos.forEach(({ variant, prefixedName }) => {
       const upperCamel = convertCase(variant.name.text, "UpperCamel");
       const kindName = variant.type ? `${upperCamel}Wrapper` : upperCamel;
       if (variant.type) {
         this.lines.push(
-          `${body3Indent}${kindTypeName}.${kindName} => visitor.On${prefixedName}(As${prefixedName}()),`,
+          `   ${kindTypeName}.${kindName} => visitor.On${prefixedName}(As${prefixedName}()),`,
         );
       } else {
         this.lines.push(
-          `${body3Indent}${kindTypeName}.${kindName} => visitor.On${prefixedName}(),`,
+          `   ${kindTypeName}.${kindName} => visitor.On${prefixedName}(),`,
         );
       }
     });
     this.lines.push(
-      `${body3Indent}_ => throw new global::System.InvalidOperationException("kind=" + ${kindMemberName}.ToString())`,
+      `   _ => throw new global::System.InvalidOperationException("kind=" + ${kindMemberName}.ToString())`,
     );
-    this.lines.push(`${body2Indent}};`);
-    this.lines.push(`${bodyIndent}}`);
+    this.lines.push("  };");
+    this.lines.push(" }");
     this.lines.push("");
 
-    this.lines.push(`${bodyIndent}public bool Equals(${fqBase}? other)`);
-    this.lines.push(`${bodyIndent}{`);
-    this.lines.push(`${body2Indent}if (other is null) return false;`);
+    this.lines.push(` public bool Equals(${fqBase}? other)`);
+    this.lines.push(" {");
+    this.lines.push("  if (other is null) return false;");
+    this.lines.push("  if (ReferenceEquals(this, other)) return true;");
     this.lines.push(
-      `${body2Indent}if (ReferenceEquals(this, other)) return true;`,
+      `  if (${kindMemberName} != other.${kindMemberName}) return false;`,
     );
     this.lines.push(
-      `${body2Indent}if (${kindMemberName} != other.${kindMemberName}) return false;`,
+      `  if (${kindMemberName} == ${kindTypeName}.Unknown) return true;`,
     );
     this.lines.push(
-      `${body2Indent}if (${kindMemberName} == ${kindTypeName}.Unknown) return true;`,
+      `  return global::System.Collections.Generic.EqualityComparer<object?>.Default.Equals(Value_, other.Value_);`,
     );
-    this.lines.push(
-      `${body2Indent}return global::System.Collections.Generic.EqualityComparer<object?>.Default.Equals(Value_, other.Value_);`,
-    );
-    this.lines.push(`${bodyIndent}}`);
+    this.lines.push(" }");
     this.lines.push("");
 
-    this.lines.push(`${bodyIndent}public override int GetHashCode() =>`);
+    this.lines.push(` public override int GetHashCode() =>`);
     this.lines.push(
-      `${body2Indent}${kindMemberName} == ${kindTypeName}.Unknown ? 0 : global::System.HashCode.Combine(${kindMemberName}, Value_);`,
+      `  ${kindMemberName} == ${kindTypeName}.Unknown ? 0 : global::System.HashCode.Combine(${kindMemberName}, Value_);`,
     );
     this.lines.push("");
 
     this.lines.push(
-      `${bodyIndent}public static int _getKindOrdinalForAdapter(${fqBase} x)`,
+      ` public static int _getKindOrdinalForAdapter(${fqBase} x)`,
     );
-    this.lines.push(`${bodyIndent}{`);
-    this.lines.push(`${body2Indent}return x.${kindMemberName} switch`);
-    this.lines.push(`${body2Indent}{`);
-    this.lines.push(`${body3Indent}${fqBase}.${kindTypeName}.Unknown => 0,`);
+    this.lines.push(" {");
+    this.lines.push(`  return x.${kindMemberName} switch`);
+    this.lines.push("  {");
+    this.lines.push(`   ${fqBase}.${kindTypeName}.Unknown => 0,`);
     variantInfos.forEach(({ variant }, i) => {
       const upperCamel = convertCase(variant.name.text, "UpperCamel");
       const kindName = variant.type ? `${upperCamel}Wrapper` : upperCamel;
-      this.lines.push(
-        `${body3Indent}${fqBase}.${kindTypeName}.${kindName} => ${i + 1},`,
-      );
+      this.lines.push(`   ${fqBase}.${kindTypeName}.${kindName} => ${i + 1},`);
     });
     this.lines.push(
-      `${body3Indent}_ => throw new global::System.InvalidOperationException("kind=" + x.${kindMemberName}.ToString())`,
+      `   _ => throw new global::System.InvalidOperationException("kind=" + x.${kindMemberName}.ToString())`,
     );
-    this.lines.push(`${body2Indent}};`);
-    this.lines.push(`${bodyIndent}}`);
+    this.lines.push("  };");
+    this.lines.push(" }");
     this.lines.push(
-      `${bodyIndent}public static ${fqBase} _wrapUnrecognizedForAdapter(global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> u) => new(${fqBase}.${kindTypeName}.Unknown, u);`,
+      ` public static ${fqBase} _wrapUnrecognizedForAdapter(global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> u) => new(${fqBase}.${kindTypeName}.Unknown, u);`,
     );
     this.lines.push(
-      `${bodyIndent}public static global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? _getUnrecognizedForAdapter(${fqBase} x) => x.${kindMemberName} == ${fqBase}.${kindTypeName}.Unknown ? x.Value_ as global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> : null;`,
+      ` public static global::SkirClient.Internal.UnrecognizedVariant<${fqBase}>? _getUnrecognizedForAdapter(${fqBase} x) => x.${kindMemberName} == ${fqBase}.${kindTypeName}.Unknown ? x.Value_ as global::SkirClient.Internal.UnrecognizedVariant<${fqBase}> : null;`,
     );
     this.lines.push("");
 
     // Serializer property.
     this.lines.push(
-      `${bodyIndent}public static global::SkirClient.Serializer<${fqBase}> Serializer`,
+      ` public static global::SkirClient.Serializer<${fqBase}> Serializer`,
     );
     this.lines.push(
-      `${bodyIndent}{ get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
+      ` { get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
     );
     this.lines.push("");
 
-    this.lines.push(`${indent}}`);
+    this.lines.push("}");
   }
 
-  private writeModuleInitBuilder(
-    record: RecordLocation,
-    indentLevel: number,
-  ): void {
-    const indent = "    ".repeat(indentLevel);
-    const bodyIndent = "    ".repeat(indentLevel + 1);
+  private writeModuleInitBuilder(record: RecordLocation): void {
     const name = getTypeName(record);
     const builderName = `${name}_builder`;
     const fqName = this.getFullyQualifiedTypeName(record);
     const fieldInfos = this.computeFieldInfos(record, name);
 
-    this.lines.push(`${indent}private sealed class ${builderName}`);
-    this.lines.push(`${indent}{`);
+    this.lines.push(` private sealed class ${builderName}`);
+    this.lines.push(" {");
     for (const { field, propertyName } of fieldInfos) {
       const fieldType = this.typeSpeller.getCsharpFieldType(field);
       const defaultExpr = this.typeSpeller.getFieldDefaultExpr(field);
       this.lines.push(
-        `${bodyIndent}public ${fieldType} ${propertyName} { get; set; } = ${defaultExpr};`,
+        `  public ${fieldType} ${propertyName} { get; set; } = ${defaultExpr};`,
       );
     }
     this.lines.push(
-      `${bodyIndent}public global::SkirClient.Internal.UnrecognizedFields<${fqName}>? _unrecognized { get; set; } = null;`,
+      `  public global::SkirClient.Internal.UnrecognizedFields<${fqName}>? _unrecognized { get; set; } = null;`,
     );
-    this.lines.push(`${indent}}`);
+    this.lines.push(" }");
     this.lines.push("");
   }
 
-  private writeModuleInitAdapterFields(
-    record: RecordLocation,
-    indentLevel: number,
-  ): void {
-    const indent = "    ".repeat(indentLevel);
-    const bodyIndent = "    ".repeat(indentLevel + 1);
+  private writeModuleInitAdapterFields(record: RecordLocation): void {
     const name = getTypeName(record);
 
     if (record.record.recordType === "struct") {
@@ -656,19 +617,19 @@ class CsharpSourceFileGenerator {
       const structDoc = this.getDocText(record.record.doc);
 
       this.lines.push(
-        `${indent}private static readonly global::SkirClient.Internal.StructAdapter<${fqName}, ${builderName}> ${name}_Adapter = new(`,
+        ` private static readonly global::SkirClient.Internal.StructAdapter<${fqName}, ${builderName}> ${name}_Adapter = new(`,
       );
-      this.lines.push(`${bodyIndent}${name}.Default,`);
-      this.lines.push(`${bodyIndent}${JSON.stringify(modulePath)},`);
-      this.lines.push(`${bodyIndent}${JSON.stringify(qualifiedName)},`);
-      this.lines.push(`${bodyIndent}${JSON.stringify(structDoc)},`);
-      this.lines.push(`${bodyIndent}${newBuilderLambda},`);
-      this.lines.push(`${bodyIndent}${buildInitExpr},`);
-      this.lines.push(`${bodyIndent}x => x._unrecognized,`);
-      this.lines.push(`${bodyIndent}(b, v) => b._unrecognized = v`);
-      this.lines.push(`${indent});`);
+      this.lines.push(`  ${name}.Default,`);
+      this.lines.push(`  ${JSON.stringify(modulePath)},`);
+      this.lines.push(`  ${JSON.stringify(qualifiedName)},`);
+      this.lines.push(`  ${JSON.stringify(structDoc)},`);
+      this.lines.push(`  ${newBuilderLambda},`);
+      this.lines.push(`  ${buildInitExpr},`);
+      this.lines.push(`  x => x._unrecognized,`);
+      this.lines.push(`  (b, v) => b._unrecognized = v`);
+      this.lines.push(" );");
       this.lines.push(
-        `${indent}public static readonly global::SkirClient.Serializer<${fqName}> ${name}_Serializer = new(${name}_Adapter);`,
+        ` public static readonly global::SkirClient.Serializer<${fqName}> ${name}_Serializer = new(${name}_Adapter);`,
       );
       this.lines.push("");
       return;
@@ -682,34 +643,30 @@ class CsharpSourceFileGenerator {
     const enumDoc = this.getDocText(record.record.doc);
 
     this.lines.push(
-      `${indent}private static readonly global::SkirClient.Internal.EnumAdapter<${fqBase}> ${name}_Adapter = new(`,
+      ` private static readonly global::SkirClient.Internal.EnumAdapter<${fqBase}> ${name}_Adapter = new(`,
     );
-    this.lines.push(`${bodyIndent}${name}._getKindOrdinalForAdapter,`);
-    this.lines.push(`${bodyIndent}${name}._wrapUnrecognizedForAdapter,`);
-    this.lines.push(`${bodyIndent}${name}._getUnrecognizedForAdapter,`);
-    this.lines.push(`${bodyIndent}${fqBase}.Unknown,`);
-    this.lines.push(`${bodyIndent}${JSON.stringify(modulePath)},`);
-    this.lines.push(`${bodyIndent}${JSON.stringify(qualifiedName)},`);
-    this.lines.push(`${bodyIndent}${JSON.stringify(enumDoc)}`);
-    this.lines.push(`${indent});`);
+    this.lines.push(`  ${name}._getKindOrdinalForAdapter,`);
+    this.lines.push(`  ${name}._wrapUnrecognizedForAdapter,`);
+    this.lines.push(`  ${name}._getUnrecognizedForAdapter,`);
+    this.lines.push(`  ${fqBase}.Unknown,`);
+    this.lines.push(`  ${JSON.stringify(modulePath)},`);
+    this.lines.push(`  ${JSON.stringify(qualifiedName)},`);
+    this.lines.push(`  ${JSON.stringify(enumDoc)}`);
+    this.lines.push(" );");
     this.lines.push(
-      `${indent}public static readonly global::SkirClient.Serializer<${fqBase}> ${name}_Serializer = new(${name}_Adapter);`,
+      ` public static readonly global::SkirClient.Serializer<${fqBase}> ${name}_Serializer = new(${name}_Adapter);`,
     );
     this.lines.push("");
   }
 
-  private writeModuleInitAdapterInit(
-    record: RecordLocation,
-    indentLevel: number,
-  ): void {
-    const indent = "    ".repeat(indentLevel);
+  private writeModuleInitAdapterInit(record: RecordLocation): void {
     const name = getTypeName(record);
 
     if (record.record.recordType === "struct") {
       const fieldInfos = this.computeFieldInfos(record, name);
       for (const removedNumber of record.record.removedNumbers) {
         this.lines.push(
-          `${indent}${name}_Adapter.AddRemovedNumber(${removedNumber});`,
+          `  ${name}_Adapter.AddRemovedNumber(${removedNumber});`,
         );
       }
 
@@ -722,11 +679,11 @@ class CsharpSourceFileGenerator {
         const getter = this.makeStructFieldGetter(field, propertyName);
         const setter = this.makeStructFieldSetter(field, propertyName);
         this.lines.push(
-          `${indent}${name}_Adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr}, ${getter}, ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
+          `  ${name}_Adapter.AddField(${JSON.stringify(field.name.text)}, ${field.number}, ${serExpr}, ${getter}, ${setter}, ${JSON.stringify(this.getDocText(field.doc))});`,
         );
       }
 
-      this.lines.push(`${indent}${name}_Adapter.Finalize_();`);
+      this.lines.push(`  ${name}_Adapter.Finalize_();`);
       return;
     }
 
@@ -738,9 +695,7 @@ class CsharpSourceFileGenerator {
     }));
 
     for (const removedNumber of record.record.removedNumbers) {
-      this.lines.push(
-        `${indent}${name}_Adapter.AddRemovedNumber(${removedNumber});`,
-      );
+      this.lines.push(`  ${name}_Adapter.AddRemovedNumber(${removedNumber});`);
     }
 
     variantInfos.forEach(({ variant, memberName, prefixedName }, i) => {
@@ -749,16 +704,16 @@ class CsharpSourceFileGenerator {
         const payloadCsharpType = this.typeSpeller.getCsharpType(variant.type);
         const serExpr = this.typeSpeller.getSerializerExpr(variant.type, true);
         this.lines.push(
-          `${indent}${name}_Adapter.AddWrapperVariant<${payloadCsharpType}>(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${serExpr}, v => ${fqBase}.Wrap${prefixedName}(v), x => x.As${prefixedName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
+          `  ${name}_Adapter.AddWrapperVariant<${payloadCsharpType}>(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${serExpr}, v => ${fqBase}.Wrap${prefixedName}(v), x => x.As${prefixedName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       } else {
         this.lines.push(
-          `${indent}${name}_Adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${fqBase}.${memberName}, ${JSON.stringify(this.getDocText(variant.doc))});`,
+          `  ${name}_Adapter.AddConstantVariant(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${fqBase}.${memberName}, ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
       }
     });
 
-    this.lines.push(`${indent}${name}_Adapter.Finalize_();`);
+    this.lines.push(`  ${name}_Adapter.Finalize_();`);
   }
 
   /**
