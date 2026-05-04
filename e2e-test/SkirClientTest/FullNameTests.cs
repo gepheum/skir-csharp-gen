@@ -41,4 +41,17 @@ public sealed class FullNameTests
         Assert.Equal("", otherName.FirstName);
         Assert.Equal("Smith", otherName.LastName);
     }
+
+    [Fact]
+    public void ToString_ReturnsReadableJson()
+    {
+        FullName name = new() { FirstName = "John", LastName = "Doe" };
+        Assert.Equal("{\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\"\n}", name.ToString());
+    }
+
+    [Fact]
+    public void ToString_DefaultOmitsFields()
+    {
+        Assert.Equal("{}", FullName.Default.ToString());
+    }
 }

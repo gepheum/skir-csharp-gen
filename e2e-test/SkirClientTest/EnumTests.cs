@@ -78,6 +78,25 @@ public sealed class EnumTests
     }
 
     [Fact]
+    public void ToString_ConstantVariant_ReturnsReadableJson()
+    {
+        Assert.Equal("\"monday\"", Weekday.Monday.ToString());
+    }
+
+    [Fact]
+    public void ToString_UnknownVariant_ReturnsReadableJson()
+    {
+        Assert.Equal("\"unknown\"", Weekday.Unknown.ToString());
+    }
+
+    [Fact]
+    public void ToString_WrapperVariant_ReturnsReadableJson()
+    {
+        var v = JsonValue.WrapBoolean(true);
+        Assert.Equal("{\n  \"kind\": \"boolean\",\n  \"value\": true\n}", v.ToString());
+    }
+
+    [Fact]
     public void WrapperVariant_NotEqualWhenDifferentPayload()
     {
         var a = JsonValue.WrapString("hello");

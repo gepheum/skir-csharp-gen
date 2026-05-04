@@ -312,6 +312,9 @@ class CsharpSourceFileGenerator {
     this.lines.push(
       ` { get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
     );
+    this.lines.push(
+      ` public override string ToString() => Serializer.ToJson(this, readable: true);`,
+    );
     this.lines.push("");
 
     const keyedArrayIndexers = this.computeStructIndexerInfos(record);
@@ -549,6 +552,9 @@ class CsharpSourceFileGenerator {
     );
     this.lines.push(
       ` { get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
+    );
+    this.lines.push(
+      ` public override string ToString() => Serializer.ToJson(this, readable: true);`,
     );
     this.lines.push("");
 
