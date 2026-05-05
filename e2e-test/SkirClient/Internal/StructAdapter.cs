@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 
 namespace SkirClient.Internal;
+
 /// <summary>
 /// A fully functional <see cref="Serializer{T}"/> for a Skir struct type.
 /// <para>
