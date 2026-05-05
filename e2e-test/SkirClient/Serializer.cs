@@ -83,7 +83,6 @@ public sealed class Serializer<T>
         // No magic prefix - treat payload as UTF-8 JSON.
         return FromJson(
             System.Text.Encoding.UTF8.GetString(bytes),
-            MustNameArguments.GetDefault(),
             keepUnrecognizedValues: keepUnrecognizedValues);
     }
 

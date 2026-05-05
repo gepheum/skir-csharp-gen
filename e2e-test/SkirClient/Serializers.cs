@@ -33,7 +33,7 @@ public static class Serializers
         => new(new OptionalValueAdapter_<T>(inner));
 
     /// <summary>Serializer for a read-only array of values.</summary>
-    public static Serializer<ImmutableArray<T>> Array<T>(Serializer<T> inner, string keyExtractor = "")
+    public static Serializer<ImmutableArray<T>> Array<T>(Serializer<T> inner, MustNameArguments _ = default, string keyExtractor = "")
         => new(new ArrayAdapter_<T>(inner, keyExtractor));
 
     /// <summary>Serializer for a recursive struct field (<see cref="SkirClient.Recursive{T}"/>).</summary>

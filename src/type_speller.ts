@@ -154,7 +154,7 @@ export class TypeSpeller {
     if (isRecursive === "hard") {
       // Property type is Recursive<T>. Wrap the inner serializer.
       const innerExpr = this.getSerializerExprInner(type, initCtx);
-      return `global::SkirClient.Serializers.RecursiveSerializer(${innerExpr})`;
+      return `global::SkirClient.Serializers.Recursive(${innerExpr})`;
     }
     if (isRecursive === "via-optional") {
       // Property type is Recursive<T>?. type is optional(T).
@@ -164,7 +164,7 @@ export class TypeSpeller {
         );
       }
       const innerExpr = this.getSerializerExprInner(type.other, initCtx);
-      return `global::SkirClient.Serializers.OptionalValue(global::SkirClient.Serializers.RecursiveSerializer(${innerExpr}))`;
+      return `global::SkirClient.Serializers.OptionalValue(global::SkirClient.Serializers.Recursive(${innerExpr}))`;
     }
     return this.getSerializerExprInner(type, initCtx);
   }
@@ -208,7 +208,7 @@ export class TypeSpeller {
         const itemExpr = this.getSerializerExprInner(type.item, initCtx);
         const keyExtractor = this.getArrayKeyExtractor(type);
         return keyExtractor.length > 0
-          ? `global::SkirClient.Serializers.Array(${itemExpr}, ${JSON.stringify(keyExtractor)})`
+          ? `global::SkirClient.Serializers.Array(${itemExpr}, keyExtractor: ${JSON.stringify(keyExtractor)})`
           : `global::SkirClient.Serializers.Array(${itemExpr})`;
       }
       case "optional": {

@@ -6,6 +6,4 @@ namespace SkirClient.Internal;
 public readonly struct MustNameArguments
 {
     private MustNameArguments(int _) { }
-
-    internal static MustNameArguments GetDefault() => default;
 }
