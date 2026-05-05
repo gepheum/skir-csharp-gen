@@ -36,8 +36,8 @@ public static class Serializers
     public static Serializer<ImmutableArray<T>> Array<T>(Serializer<T> inner, string keyExtractor = "")
         => new(new ArrayAdapter_<T>(inner, keyExtractor));
 
-    /// <summary>Serializer for a recursive struct field (<see cref="Recursive{T}"/>).</summary>
-    public static Serializer<Recursive<T>> RecursiveSerializer<T>(Serializer<T> inner) where T : struct
+    /// <summary>Serializer for a recursive struct field (<see cref="SkirClient.Recursive{T}"/>).</summary>
+    public static Serializer<SkirClient.Recursive<T>> Recursive<T>(Serializer<T> inner) where T : struct
         => new(new RecursiveAdapter_<T>(inner));
 
     // ---- BoolAdapter ----
@@ -734,7 +734,7 @@ public static class Serializers
         public Recursive<T> FromJson(JsonElement json, bool keep)
         {
             T value = _inner.FromJson(json, keep);
-            return _inner.IsDefault(value) ? Recursive<T>.DefaultValue : Recursive<T>.FromValue(value);
+            return _inner.IsDefault(value) ? SkirClient.Recursive<T>.DefaultValue : SkirClient.Recursive<T>.FromValue(value);
         }
 
         public void Encode(Recursive<T> r, List<byte> output) =>
@@ -743,7 +743,7 @@ public static class Serializers
         public Recursive<T> Decode(byte[] data, ref int offset, bool keep)
         {
             T value = _inner.Decode(data, ref offset, keep);
-            return _inner.IsDefault(value) ? Recursive<T>.DefaultValue : Recursive<T>.FromValue(value);
+            return _inner.IsDefault(value) ? SkirClient.Recursive<T>.DefaultValue : SkirClient.Recursive<T>.FromValue(value);
         }
 
         public TypeDescriptor TypeDescriptor => inner.TypeDescriptor;
