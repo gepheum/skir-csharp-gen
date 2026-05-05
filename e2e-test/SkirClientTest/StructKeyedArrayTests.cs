@@ -16,8 +16,8 @@ public sealed class StructKeyedArrayTests
             ArrayWithStringKey = [alpha, beta],
         };
 
-        Assert.Equal(beta, items.ArrayWithStringKey_FindByKey("beta"));
-        Assert.Null(items.ArrayWithStringKey_FindByKey("missing"));
+        Assert.Equal(beta, items.ArrayWithStringKey_FindByString("beta"));
+        Assert.Null(items.ArrayWithStringKey_FindByString("missing"));
     }
 
     [Fact]
@@ -29,8 +29,8 @@ public sealed class StructKeyedArrayTests
             ArrayWithStringKey = [alpha],
         };
 
-        Assert.Equal(alpha, items.ArrayWithStringKey_FindByKeyOrDefault("alpha"));
-        Assert.Equal(Item.Default, items.ArrayWithStringKey_FindByKeyOrDefault("missing"));
+        Assert.Equal(alpha, items.ArrayWithStringKey_FindByStringOrDefault("alpha"));
+        Assert.Equal(Item.Default, items.ArrayWithStringKey_FindByStringOrDefault("missing"));
     }
 
     private static Item CreateItem(bool boolValue, string stringValue, int int32Value)

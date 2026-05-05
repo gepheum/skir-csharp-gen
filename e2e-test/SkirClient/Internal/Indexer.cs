@@ -8,7 +8,7 @@ namespace SkirClient.Internal;
 public sealed class Indexer<TValue, TKey> where TKey : notnull
 {
     private readonly Func<TValue, TKey> _keySelector;
-    private readonly Dictionary<ImmutableArray<TValue>, ImmutableDictionary<TKey, TValue>> _cache = [];
+    private readonly Dictionary<ImmutableArray<TValue>, ImmutableDictionary<TKey, int>> _cache = [];
     private readonly System.Threading.Lock _mutex = new();
 
     public Indexer(Func<TValue, TKey> keySelector)
@@ -16,7 +16,7 @@ public sealed class Indexer<TValue, TKey> where TKey : notnull
         _keySelector = keySelector ?? throw new ArgumentNullException(nameof(keySelector));
     }
 
-    public ImmutableDictionary<TKey, TValue> Index(ImmutableArray<TValue> values)
+    public ImmutableDictionary<TKey, int> Index(ImmutableArray<TValue> values)
     {
         lock (_mutex)
         {
@@ -31,12 +31,12 @@ public sealed class Indexer<TValue, TKey> where TKey : notnull
         }
     }
 
-    private ImmutableDictionary<TKey, TValue> BuildIndex(ImmutableArray<TValue> values)
+    private ImmutableDictionary<TKey, int> BuildIndex(ImmutableArray<TValue> values)
     {
-        var builder = ImmutableDictionary.CreateBuilder<TKey, TValue>();
-        foreach (var value in values)
+        var builder = ImmutableDictionary.CreateBuilder<TKey, int>();
+        for (int i = 0; i < values.Length; i++)
         {
-            builder[_keySelector(value)] = value;
+            builder[_keySelector(values[i])] = i;
         }
 
         return builder.ToImmutable();

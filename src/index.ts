@@ -326,7 +326,7 @@ class CsharpSourceFileGenerator {
       this.lines.push("");
       for (const indexer of keyedArrayIndexers) {
         this.lines.push(
-          ` public static readonly global::SkirClient.Internal.Indexer<${fqName}, ${indexer.keyType}> ${indexer.indexerName} = new(${indexer.keySelector});`,
+          ` internal static readonly global::SkirClient.Internal.Indexer<${fqName}, ${indexer.keyType}> ${indexer.indexerName} = new(${indexer.keySelector});`,
         );
       }
       this.lines.push("");
@@ -365,8 +365,9 @@ class CsharpSourceFileGenerator {
       const itemDefaultExpr = this.typeSpeller.getDefaultExpr(field.type.item);
       const itemOptionalType = `${itemType}?`;
       const itemIndexerRef = `${this.getFullyQualifiedTypeName(itemRecord)}.${itemIndexer.indexerName}`;
-      const findByKeyName = `${propertyName}_FindByKey`;
-      const findByKeyOrDefaultName = `${propertyName}_FindByKeyOrDefault`;
+      const keyPathName = this.getFieldPathMemberSuffix(keySpec.fieldPath);
+      const findByKeyName = `${propertyName}_FindBy${keyPathName}`;
+      const findByKeyOrDefaultName = `${propertyName}_FindBy${keyPathName}OrDefault`;
 
       this.lines.push(
         ` public ${itemOptionalType} ${findByKeyName}(${keyType} key)`,
@@ -376,7 +377,7 @@ class CsharpSourceFileGenerator {
         `  var indexed = ${itemIndexerRef}.Index(${propertyName});`,
       );
       this.lines.push(
-        `  return indexed.TryGetValue(key, out var value) ? value : null;`,
+        `  return indexed.TryGetValue(key, out var index) ? ${propertyName}[index] : null;`,
       );
       this.lines.push(" }");
       this.lines.push("");
@@ -389,7 +390,7 @@ class CsharpSourceFileGenerator {
         `  var indexed = ${itemIndexerRef}.Index(${propertyName});`,
       );
       this.lines.push(
-        `  return indexed.TryGetValue(key, out var value) ? value : ${itemDefaultExpr};`,
+        `  return indexed.TryGetValue(key, out var index) ? ${propertyName}[index] : ${itemDefaultExpr};`,
       );
       this.lines.push(" }");
       this.lines.push("");
@@ -754,6 +755,12 @@ class CsharpSourceFileGenerator {
 
   private getFieldPathExtractor(fieldPath: FieldPath): string {
     return fieldPath.path.map((part) => part.name.text).join(".");
+  }
+
+  private getFieldPathMemberSuffix(fieldPath: FieldPath): string {
+    return fieldPath.path
+      .map((part) => convertCase(part.name.text, "UpperCamel"))
+      .join("");
   }
 
   private computeStructIndexerInfos(record: RecordLocation): Array<{
