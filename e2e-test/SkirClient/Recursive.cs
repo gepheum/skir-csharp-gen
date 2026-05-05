@@ -18,6 +18,14 @@ public readonly struct Recursive<T>
     private sealed class Box(T value)
     {
         public T Value { get; } = value;
+
+        public override bool Equals(object? obj) =>
+            obj is Box other && global::System.Collections.Generic.EqualityComparer<T>.Default.Equals(Value, other.Value);
+
+        public override int GetHashCode() =>
+            global::System.Collections.Generic.EqualityComparer<T>.Default.GetHashCode(Value!);
+
+        public override string ToString() => Value?.ToString() ?? "";
     }
 
     private readonly Box? _box;

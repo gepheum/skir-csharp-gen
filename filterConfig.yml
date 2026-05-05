@@ -1,0 +1,7 @@
+apiRules:
+- exclude:
+    uidRegex: ^SkirClientTest
+    type: Namespace
+- exclude:
+    uidRegex: ^SkirClient\.Internal
+    type: Namespace

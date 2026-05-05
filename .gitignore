@@ -3,7 +3,9 @@
 .idea
 bin
 build
+api
 dist
+docs
 node_modules
 obj
 skir-external

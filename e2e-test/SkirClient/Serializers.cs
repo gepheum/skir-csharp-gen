@@ -116,21 +116,20 @@ public static class Serializers
     // Decodes the body of a variable-length number given the already-consumed wire byte.
     private static long DecodeNumberBody(byte wire, byte[] data, ref int offset)
     {
-        switch (wire)
+        return wire switch
         {
-            case <= 231: return wire;
-            case 232: return ReadU16(data, ref offset);
-            case 233: return ReadU32(data, ref offset);
-            case 234: return (long)ReadU64(data, ref offset); // reinterpret bits
-            case 235: return ReadU8(data, ref offset) - 256L;
-            case 236: return ReadU16(data, ref offset) - 65536L;
-            case 237: return (int)ReadU32(data, ref offset);
-            case 238:
-            case 239: return (long)ReadU64(data, ref offset);
-            case 240: return (long)Math.Round(BitConverter.UInt32BitsToSingle(ReadU32(data, ref offset)));
-            case 241: return (long)Math.Round(BitConverter.Int64BitsToDouble((long)ReadU64(data, ref offset)));
-            default: return 0;
-        }
+            <= 231 => wire,
+            232 => ReadU16(data, ref offset),
+            233 => ReadU32(data, ref offset),
+            234 => (long)ReadU64(data, ref offset),// reinterpret bits
+            235 => ReadU8(data, ref offset) - 256L,
+            236 => ReadU16(data, ref offset) - 65536L,
+            237 => (int)ReadU32(data, ref offset),
+            238 or 239 => (long)ReadU64(data, ref offset),
+            240 => (long)Math.Round(BitConverter.UInt32BitsToSingle(ReadU32(data, ref offset))),
+            241 => (long)Math.Round(BitConverter.Int64BitsToDouble((long)ReadU64(data, ref offset))),
+            _ => 0,
+        };
     }
     internal static void EncodeI32_(int v, List<byte> output) => EncodeI32(v, output);
     internal static long DecodeNumberBody_(byte wire, byte[] data, ref int offset) =>

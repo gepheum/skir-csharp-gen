@@ -2,13 +2,21 @@
 
 set -e
 
+export PATH="$PATH:$HOME/.dotnet/tools"
+
 npm i
 npm run lint:fix
 npm run format
 cd e2e-test && dotnet format && cd ..
 npm run build
 npm run test
+# Generate HTML documentation from C# XML comments using DocFX
+# (Requires: dotnet tool install -g docfx)
+docfx docfx.json
 # Fail if there are any C# warnings (e.g. unused imports) in non-generated code.
 # Warnings for generated files under skirout/ are already suppressed via <NoWarn> in
 # the .csproj, so -warnaserror only affects hand-written source files.
 cd e2e-test && dotnet build CsharpE2eTest.csproj -warnaserror && dotnet test SkirClientTest/SkirClientTest.csproj -p:TreatWarningsAsErrors=true && cd ..
+
+# export PATH="$PATH:$HOME/.dotnet/tools"
+# docfx serve docs

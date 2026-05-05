@@ -5,7 +5,7 @@ namespace SkirClient;
 /// <summary>
 /// An owned immutable byte sequence.
 /// <para>
-/// Unlike <see cref="byte[]"/>, instances copy incoming data on construction
+/// Unlike <c>byte[]</c>, instances copy incoming data on construction
 /// and never expose a mutable buffer, which makes generated structs deeply
 /// immutable.
 /// </para>

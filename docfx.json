@@ -1,0 +1,38 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "files": ["e2e-test/CsharpE2eTest.csproj"]
+        }
+      ],
+      "dest": "api",
+      "includePrivateMembers": false,
+      "disableGitFeatures": false,
+      "filter": "filterConfig.yml"
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": ["api/**.yml", "index.md", "toc.yml"]
+      }
+    ],
+    "resource": [],
+    "output": "docs",
+    "globalMetadata": {
+      "_appTitle": "Skir C# Client Documentation",
+      "_appFooter": "Skir C# runtime library",
+      "_enableSearch": true,
+      "_disableAffix": false
+    },
+    "fileMetadata": {},
+    "template": ["default"],
+    "postProcessors": [],
+    "markdownEngineName": "markdig",
+    "noLangKeyword": false,
+    "keepFileLink": false,
+    "cleanupCacheHistory": false,
+    "disableGitFeatures": false
+  }
+}
