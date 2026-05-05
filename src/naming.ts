@@ -90,7 +90,10 @@ const RECORD_SYNTHESIZED_MEMBERS = new Set<string>([
   "Deconstruct",
 ]);
 
-const RESERVED_MEMBER_NAMES = new Set<string>(["DEFAULT"]);
+export const GENERATED_MEMBER_NAMES = new Set<string>([
+  "Default",
+  "Serializer",
+]);
 
 // Members synthesized inside generated enum record bodies.
 const ENUM_RESERVED_MEMBER_NAMES = new Set<string>([
@@ -171,7 +174,7 @@ export function toFieldPropertyName(
 ): string {
   const base = toTypeSegment(field.name.text);
   if (
-    RESERVED_MEMBER_NAMES.has(base) ||
+    GENERATED_MEMBER_NAMES.has(base) ||
     RECORD_SYNTHESIZED_MEMBERS.has(base) ||
     base === enclosingTypeName
   ) {
