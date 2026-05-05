@@ -3,12 +3,12 @@ namespace SkirClient;
 /// <summary>
 /// Wraps a recursive struct field value.
 /// <para>
-/// Mirrors Zig's <c>Recursive(T)</c> union shape:
-/// <c>default_value | value: *const T</c>.
+/// Use <see cref="Default"/> to represent the field's default state
+/// (no wrapped value).
 /// </para>
 /// <para>
-/// Treat <see cref="DefaultValue"/> the same as the default value of
-/// <typeparamref name="T"/>.
+/// Use <see cref="FromValue(T)"/> to create a value-bearing instance, then
+/// check <see cref="HasValue"/> before reading <see cref="Value"/>.
 /// </para>
 /// </summary>
 public readonly struct Recursive<T>
@@ -36,32 +36,27 @@ public readonly struct Recursive<T>
     }
 
     /// <summary>
-    /// True when this instance represents Zig's <c>default_value</c> branch.
+    /// True when this instance contains a wrapped value.
     /// </summary>
-    public bool IsDefaultValue => _box is null;
+    public bool HasValue => _box is not null;
 
     /// <summary>
-    /// True when this instance represents Zig's <c>value</c> branch.
-    /// </summary>
-    public bool HasValue => !IsDefaultValue;
-
-    /// <summary>
-    /// The wrapped value for the <c>value</c> branch.
-    /// Throws when called on <see cref="DefaultValue"/>.
+    /// The wrapped value.
+    /// Throws when called on <see cref="Default"/>.
     /// </summary>
     public T Value =>
         HasValue
             ? _box!.Value
             : throw new global::System.InvalidOperationException(
-                "Recursive value is default_value and has no wrapped value.");
+                "Recursive value is default and has no wrapped value.");
 
     /// <summary>
-    /// Returns Zig's <c>default_value</c> branch.
+    /// Returns the default state (no wrapped value).
     /// </summary>
-    public static readonly Recursive<T> DefaultValue = new(box: null);
+    public static readonly Recursive<T> Default = new(box: null);
 
     /// <summary>
-    /// Returns Zig's <c>value</c> branch.
+    /// Returns an instance with a wrapped value.
     /// </summary>
     public static Recursive<T> FromValue(T value)
     {

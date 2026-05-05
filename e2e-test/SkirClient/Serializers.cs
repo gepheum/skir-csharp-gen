@@ -726,24 +726,24 @@ public static class Serializers
         private readonly ITypeAdapter<T> _inner = inner.Adapter;
 
         public bool IsDefault(Recursive<T> r) =>
-            r.IsDefaultValue || _inner.IsDefault(r.Value);
+            !r.HasValue || _inner.IsDefault(r.Value);
 
         public void ToJson(Recursive<T> r, string? eolIndent, StringBuilder sb) =>
-            _inner.ToJson(r.IsDefaultValue ? default : r.Value!, eolIndent, sb);
+            _inner.ToJson(!r.HasValue ? default : r.Value!, eolIndent, sb);
 
         public Recursive<T> FromJson(JsonElement json, bool keep)
         {
             T value = _inner.FromJson(json, keep);
-            return _inner.IsDefault(value) ? SkirClient.Recursive<T>.DefaultValue : SkirClient.Recursive<T>.FromValue(value);
+            return _inner.IsDefault(value) ? SkirClient.Recursive<T>.Default : SkirClient.Recursive<T>.FromValue(value);
         }
 
         public void Encode(Recursive<T> r, List<byte> output) =>
-            _inner.Encode(r.IsDefaultValue ? default : r.Value!, output);
+            _inner.Encode(!r.HasValue ? default : r.Value!, output);
 
         public Recursive<T> Decode(byte[] data, ref int offset, bool keep)
         {
             T value = _inner.Decode(data, ref offset, keep);
-            return _inner.IsDefault(value) ? SkirClient.Recursive<T>.DefaultValue : SkirClient.Recursive<T>.FromValue(value);
+            return _inner.IsDefault(value) ? SkirClient.Recursive<T>.Default : SkirClient.Recursive<T>.FromValue(value);
         }
 
         public TypeDescriptor TypeDescriptor => inner.TypeDescriptor;

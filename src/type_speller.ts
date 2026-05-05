@@ -89,7 +89,7 @@ export class TypeSpeller {
 
     if (field.isRecursive === "hard") {
       const fieldType = this.getCsharpFieldType(field);
-      return `${fieldType}.DefaultValue`;
+      return `${fieldType}.Default`;
     }
 
     if (field.isRecursive === "via-optional") {
