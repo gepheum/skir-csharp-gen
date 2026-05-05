@@ -61,6 +61,7 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
     private List<int?> _slotToIndex = [];
     private readonly StructDescriptor _descriptor;
 
+    /// <summary>Creates a struct adapter used by generated struct serializers.</summary>
     public StructAdapter(T defaultValue, string modulePath, string qualifiedName, string structDoc,
         Func<TBuilder> newBuilder, Func<TBuilder, T> build,
         Func<T, UnrecognizedFields<T>?> getUnrecognized,

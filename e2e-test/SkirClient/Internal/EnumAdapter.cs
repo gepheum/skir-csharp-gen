@@ -133,6 +133,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
     private readonly HashSet<int> _removedNumbers = [];
     private readonly EnumDescriptor _descriptor;
 
+    /// <summary>Creates an enum adapter used by generated enum serializers.</summary>
     public EnumAdapter(
         Func<T, int> getKindOrdinal,
         Func<UnrecognizedVariant<T>, T> wrapUnrecognized,
@@ -153,6 +154,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
 
     // ---- builder -----------------------------------------------------------
 
+    /// <summary>Registers a constant enum variant.</summary>
     public void AddConstantVariant(string name, int number, int kindOrdinal, T instance, string doc = "")
     {
         _numberToEntry[number] = new AnyEntry(EntryKind.Constant, kindOrdinal);
@@ -165,6 +167,7 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
         _kindOrdinalToEntry[kindOrdinal] = new ConstantEntry(name, number, doc, instance);
     }
 
+    /// <summary>Registers a wrapper enum variant.</summary>
     public void AddWrapperVariant<V>(string name, int number, int kindOrdinal,
         Serializer<V> serializer, Func<V, T> wrap, Func<T, V> getValue, string doc = "")
     {
@@ -176,12 +179,14 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
         _kindOrdinalToEntry[kindOrdinal] = new WrapperEntry<V>(name, number, doc, serializer.Adapter, wrap, getValue);
     }
 
+    /// <summary>Marks a variant number as removed.</summary>
     public void AddRemovedNumber(int number)
     {
         _numberToEntry[number] = new AnyEntry(EntryKind.Removed, 0);
         _removedNumbers.Add(number);
     }
 
+    /// <summary>Finalizes registration and freezes lookup tables.</summary>
     public void Finalize_()
     {
         _nameToKindOrdinal["UNKNOWN"] = 0;

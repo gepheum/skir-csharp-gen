@@ -3,10 +3,18 @@ using System.Text.Json.Nodes;
 
 namespace SkirClient;
 
+/// <summary>
+/// HTTP-style response returned by <see cref="Service{TMeta}.HandleRequest(string, TMeta)"/>.
+/// </summary>
 public sealed class RawResponse
 {
+    /// <summary>Response body to send to the caller.</summary>
     public required string Data { get; init; }
+
+    /// <summary>HTTP status code to send to the caller.</summary>
     public required ushort StatusCode { get; init; }
+
+    /// <summary>HTTP content type for <see cref="Data"/>.</summary>
     public required string ContentType { get; init; }
 
     internal static RawResponse OkJson(string data) => new()
@@ -38,6 +46,9 @@ public sealed class RawResponse
     };
 }
 
+/// <summary>
+/// HTTP error status values allowed in <see cref="ServiceError"/>.
+/// </summary>
 public enum HttpErrorCode : ushort
 {
     _400_BadRequest = 400,
@@ -82,10 +93,19 @@ public enum HttpErrorCode : ushort
     _511_NetworkAuthenticationRequired = 511,
 }
 
+/// <summary>
+/// Exception thrown by service method implementations to return a specific
+/// HTTP error to the caller.
+/// </summary>
 public sealed class ServiceError : Exception
 {
+    /// <summary>The HTTP status code returned by the service.</summary>
     public HttpErrorCode StatusCode { get; }
 
+    /// <summary>
+    /// Creates a service error that will be returned by
+    /// <see cref="Service{TMeta}.HandleRequest(string, TMeta)"/>.
+    /// </summary>
     public ServiceError(HttpErrorCode statusCode, string message, Exception? source = null)
         : base(message, source)
     {
@@ -93,14 +113,42 @@ public sealed class ServiceError : Exception
     }
 }
 
+/// <summary>
+/// Context passed to the service error logger and error visibility policy.
+/// </summary>
 public sealed class MethodErrorInfo<TMeta>
 {
+    /// <summary>The exception thrown while executing the method.</summary>
     public required Exception Error { get; init; }
+
+    /// <summary>The method name as declared in generated <c>Methods</c>.</summary>
     public required string MethodName { get; init; }
+
+    /// <summary>The raw JSON request payload for the method invocation.</summary>
     public required string RawRequest { get; init; }
+
+    /// <summary>The metadata object passed to <see cref="Service{TMeta}.HandleRequest(string, TMeta)"/>.</summary>
     public required TMeta RequestMeta { get; init; }
 }
 
+/// <summary>
+/// Runtime router for generated RPC methods.
+/// <para>
+/// Build an instance with <see cref="Builder"/>, register generated methods,
+/// then call <see cref="HandleRequest(string, TMeta)"/> from your HTTP endpoint.
+/// </para>
+/// <para>
+/// Typical setup:
+/// </para>
+/// <code>
+/// var service = Service&lt;UnitMeta&gt;.Builder()
+///     .AddMethod(Methods.GetUser, (req, _) =&gt;
+///         Task.FromResult(new GetUserResponse { User = null }))
+///     .AddMethod(Methods.AddUser, (req, _) =&gt;
+///         Task.FromResult(AddUserResponse.Default))
+///     .Build();
+/// </code>
+/// </summary>
 public sealed class Service<TMeta>
 {
     private readonly bool _keepUnrecognizedValues;
@@ -127,9 +175,49 @@ public sealed class Service<TMeta>
     }
 
     /// <summary>
-    /// For GET requests in a standard HTTP stack, pass the decoded query string as body.
-    /// For POST requests, pass the raw request body.
+    /// Handles one RPC request and returns an HTTP-style response.
+    /// <para>
+    /// For GET routes, pass the decoded query string as <paramref name="body"/>.
+    /// For POST routes, pass the request body text.
+    /// </para>
+    /// <para>
+    /// The special bodies <c>"studio"</c> and <c>"list"</c> are reserved
+    /// for built-in debug pages.
+    /// </para>
     /// </summary>
+    /// <param name="body">Incoming RPC payload.</param>
+    /// <param name="meta">
+    /// Per-request metadata forwarded to every registered method handler.
+    /// </param>
+    /// <returns>
+    /// A response object containing status code, content type, and body.
+    /// </returns>
+    /// <remarks>
+    /// Example ASP.NET integration:
+    /// <code>
+    /// app.MapGet("/myapi", async (HttpContext ctx) =&gt;
+    /// {
+    ///     string raw = ctx.Request.QueryString.HasValue
+    ///         ? ctx.Request.QueryString.Value![1..]
+    ///         : string.Empty;
+    ///
+    ///     string decoded;
+    ///     try { decoded = Uri.UnescapeDataString(raw); }
+    ///     catch { decoded = raw; }
+    ///
+    ///     RawResponse resp = await service.HandleRequest(decoded, new UnitMeta());
+    ///     return Results.Content(resp.Data, resp.ContentType, Encoding.UTF8, resp.StatusCode);
+    /// });
+    ///
+    /// app.MapPost("/myapi", async (HttpContext ctx) =&gt;
+    /// {
+    ///     using var reader = new StreamReader(ctx.Request.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: false);
+    ///     string body = await reader.ReadToEndAsync();
+    ///     RawResponse resp = await service.HandleRequest(body, new UnitMeta());
+    ///     return Results.Content(resp.Data, resp.ContentType, Encoding.UTF8, resp.StatusCode);
+    /// });
+    /// </code>
+    /// </remarks>
     public async Task<RawResponse> HandleRequest(string body, TMeta meta)
     {
         switch (body)
@@ -342,11 +430,29 @@ public sealed class Service<TMeta>
     private const string DefaultStudioAppJsUrl =
         "https://cdn.jsdelivr.net/npm/skir-studio/dist/skir-studio-standalone.js";
 
+    /// <summary>
+    /// Creates a fluent builder for registering generated methods.
+    /// </summary>
+    /// <remarks>
+    /// Start with this method when wiring your service:
+    /// <code>
+    /// var service = Service&lt;UnitMeta&gt;.Builder()
+    ///     .AddMethod(Methods.GetUser, (req, meta) =&gt;
+    ///     {
+    ///         // your domain logic here
+    ///         return Task.FromResult(new GetUserResponse());
+    ///     })
+    ///     .Build();
+    /// </code>
+    /// </remarks>
     public static ServiceBuilder<TMeta> Builder() => new();
 
     internal static string DefaultStudioUrl => DefaultStudioAppJsUrl;
 }
 
+/// <summary>
+/// Configures and builds a <see cref="Service{TMeta}"/>.
+/// </summary>
 public sealed class ServiceBuilder<TMeta>
 {
     private bool _keepUnrecognizedValues;
@@ -357,6 +463,33 @@ public sealed class ServiceBuilder<TMeta>
     private readonly Dictionary<long, MethodEntry<TMeta>> _byNum = [];
     private readonly Dictionary<string, long> _byName = [];
 
+    /// <summary>
+    /// Registers one generated method implementation.
+    /// </summary>
+    /// <typeparam name="TRequest">Generated request type for the method.</typeparam>
+    /// <typeparam name="TResponse">Generated response type for the method.</typeparam>
+    /// <param name="method">Generated method descriptor from the <c>Methods</c> class.</param>
+    /// <param name="impl">
+    /// Method implementation. Throw <see cref="ServiceError"/> to return
+    /// controlled client-facing HTTP errors.
+    /// </param>
+    /// <returns>The same builder for fluent chaining.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when another method with the same method number was already
+    /// registered on this builder.
+    /// </exception>
+    /// <remarks>
+    /// Example:
+    /// <code>
+    /// .AddMethod(Methods.AddUser, (req, _) =&gt;
+    /// {
+    ///     if (req.User.UserId == 0)
+    ///         throw new ServiceError(HttpErrorCode._400_BadRequest, "user_id must be non-zero");
+    ///
+    ///     return Task.FromResult(AddUserResponse.Default);
+    /// })
+    /// </code>
+    /// </remarks>
     public ServiceBuilder<TMeta> AddMethod<TRequest, TResponse>(
         Method<TRequest, TResponse> method,
         Func<TRequest, TMeta, Task<TResponse>> impl)
@@ -396,36 +529,62 @@ public sealed class ServiceBuilder<TMeta>
         return this;
     }
 
+    /// <summary>
+    /// Controls whether unknown fields/variants are preserved while decoding
+    /// incoming requests.
+    /// </summary>
+    /// <returns>The same builder for fluent chaining.</returns>
     public ServiceBuilder<TMeta> SetKeepUnrecognizedValues(bool keep)
     {
         _keepUnrecognizedValues = keep;
         return this;
     }
 
+    /// <summary>
+    /// Sets a global policy for whether unexpected server exceptions may be
+    /// returned to clients with details.
+    /// </summary>
+    /// <returns>The same builder for fluent chaining.</returns>
     public ServiceBuilder<TMeta> SetCanSendUnknownErrorMessage(bool can)
     {
         _canSendUnknownErrorMessage = _ => can;
         return this;
     }
 
+    /// <summary>
+    /// Sets a per-request policy for whether unexpected server exception
+    /// details may be returned to clients.
+    /// </summary>
+    /// <returns>The same builder for fluent chaining.</returns>
     public ServiceBuilder<TMeta> SetCanSendUnknownErrorMessageFn(Func<MethodErrorInfo<TMeta>, bool> predicate)
     {
         _canSendUnknownErrorMessage = predicate;
         return this;
     }
 
+    /// <summary>
+    /// Sets the callback invoked whenever a method implementation throws.
+    /// </summary>
+    /// <returns>The same builder for fluent chaining.</returns>
     public ServiceBuilder<TMeta> SetErrorLogger(Action<MethodErrorInfo<TMeta>> logger)
     {
         _errorLogger = logger;
         return this;
     }
 
+    /// <summary>
+    /// Overrides the JavaScript URL used by the built-in <c>studio</c> page.
+    /// </summary>
+    /// <returns>The same builder for fluent chaining.</returns>
     public ServiceBuilder<TMeta> SetStudioAppJsUrl(string url)
     {
         _studioAppJsUrl = url;
         return this;
     }
 
+    /// <summary>
+    /// Builds an immutable service instance ready to receive requests.
+    /// </summary>
     public Service<TMeta> Build() =>
         new(
             _keepUnrecognizedValues,
@@ -436,6 +595,9 @@ public sealed class ServiceBuilder<TMeta>
             _byName);
 }
 
+/// <summary>
+/// Internal method registration entry used by <see cref="Service{TMeta}"/>.
+/// </summary>
 internal sealed record MethodEntry<TMeta>(
     string Name,
     long Number,

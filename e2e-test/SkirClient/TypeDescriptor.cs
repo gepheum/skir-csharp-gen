@@ -15,17 +15,38 @@ namespace SkirClient;
 /// <summary>Enumerates all primitive types supported by Skir.</summary>
 public enum PrimitiveType
 {
+    /// <summary>Boolean value.</summary>
     Bool,
+
+    /// <summary>32-bit signed integer.</summary>
     Int32,
+
+    /// <summary>64-bit signed integer.</summary>
     Int64,
+
+    /// <summary>64-bit unsigned hash identifier.</summary>
     Hash64,
+
+    /// <summary>32-bit floating-point number.</summary>
     Float32,
+
+    /// <summary>64-bit floating-point number.</summary>
     Float64,
+
+    /// <summary>Timestamp value.</summary>
     Timestamp,
+
+    /// <summary>UTF-8 string value.</summary>
     String,
+
+    /// <summary>Byte sequence value.</summary>
     Bytes,
 }
 
+/// <summary>
+/// Internal helpers for converting <see cref="PrimitiveType"/> values to and
+/// from their schema string names.
+/// </summary>
 internal static class PrimitiveTypeHelper
 {
     public static string AsString(this PrimitiveType p) =>
@@ -94,6 +115,7 @@ public abstract class TypeDescriptor
 /// <summary>Describes a Skir primitive type.</summary>
 public sealed class PrimitiveDescriptor : TypeDescriptor
 {
+    /// <summary>The primitive type represented by this descriptor.</summary>
     public PrimitiveType PrimitiveType { get; }
 
     public PrimitiveDescriptor(PrimitiveType primitiveType) =>
@@ -153,11 +175,19 @@ public sealed class ArrayDescriptor : TypeDescriptor
 /// <summary>Describes a single field of a Skir struct.</summary>
 public sealed class StructField
 {
+    /// <summary>Field name.</summary>
     public string Name { get; }
+
+    /// <summary>Numeric field identifier.</summary>
     public int Number { get; }
+
+    /// <summary>Field type descriptor.</summary>
     public TypeDescriptor FieldType { get; }
+
+    /// <summary>Field documentation text from the schema.</summary>
     public string Doc { get; }
 
+    /// <summary>Creates a struct-field descriptor.</summary>
     public StructField(string name, int number, TypeDescriptor fieldType, string doc = "") =>
         (Name, Number, FieldType, Doc) = (name, number, fieldType, doc ?? string.Empty);
 }
@@ -172,8 +202,13 @@ public sealed class StructField
 /// </summary>
 public abstract class EnumVariant
 {
+    /// <summary>Variant name.</summary>
     public abstract string Name { get; }
+
+    /// <summary>Numeric variant identifier.</summary>
     public abstract int Number { get; }
+
+    /// <summary>Variant documentation text from the schema.</summary>
     public abstract string Doc { get; }
 
     /// <summary>The wrapped type, or <c>null</c> for constant variants.</summary>
@@ -188,6 +223,7 @@ public sealed class EnumConstantVariant : EnumVariant
     public override string Doc { get; }
     public override TypeDescriptor? VariantType => null;
 
+    /// <summary>Creates a constant-variant descriptor.</summary>
     public EnumConstantVariant(string name, int number, string doc = "") =>
         (Name, Number, Doc) = (name, number, doc ?? string.Empty);
 }
@@ -200,6 +236,7 @@ public sealed class EnumWrapperVariant : EnumVariant
     public override TypeDescriptor? VariantType { get; }
     public override string Doc { get; }
 
+    /// <summary>Creates a wrapper-variant descriptor.</summary>
     public EnumWrapperVariant(
         string name,
         int number,
@@ -376,6 +413,9 @@ public sealed class EnumDescriptor : TypeDescriptor
 // JSON serialization / deserialization  (internal implementation)
 // =============================================================================
 
+/// <summary>
+/// Internal JSON round-trip implementation for <see cref="TypeDescriptor"/>.
+/// </summary>
 internal static class TypeDescriptorJson
 {
     private static readonly JsonSerializerOptions IndentedOptions = new() { WriteIndented = true };

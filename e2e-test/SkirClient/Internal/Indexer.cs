@@ -11,11 +11,15 @@ public sealed class Indexer<TValue, TKey> where TKey : notnull
     private readonly Dictionary<ImmutableArray<TValue>, ImmutableDictionary<TKey, int>> _cache = [];
     private readonly System.Threading.Lock _mutex = new();
 
+    /// <summary>Creates an indexer using <paramref name="keySelector"/> as key projection.</summary>
     public Indexer(Func<TValue, TKey> keySelector)
     {
         _keySelector = keySelector ?? throw new ArgumentNullException(nameof(keySelector));
     }
 
+    /// <summary>
+    /// Returns a map from key to element index for the provided array.
+    /// </summary>
     public ImmutableDictionary<TKey, int> Index(ImmutableArray<TValue> values)
     {
         lock (_mutex)

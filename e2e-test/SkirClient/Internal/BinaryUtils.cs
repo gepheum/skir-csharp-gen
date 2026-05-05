@@ -1,5 +1,8 @@
 namespace SkirClient.Internal;
 
+/// <summary>
+/// Internal helpers for reading and skipping encoded values.
+/// </summary>
 internal static class BinaryUtils
 {
     internal static byte ReadU8(byte[] data, ref int offset)

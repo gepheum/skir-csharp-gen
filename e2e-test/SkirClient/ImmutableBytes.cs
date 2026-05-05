@@ -46,10 +46,12 @@ public readonly struct ImmutableBytes : IReadOnlyList<byte>, IEquatable<Immutabl
     /// <summary>Returns a mutable copy of the underlying bytes.</summary>
     public byte[] ToArray() => Span.ToArray();
 
+    /// <summary>Returns the byte at <paramref name="index"/>.</summary>
     public byte this[int index] => Span[index];
 
     int IReadOnlyCollection<byte>.Count => Length;
 
+    /// <summary>Returns <c>true</c> when both byte sequences are equal.</summary>
     public bool Equals(ImmutableBytes other) => Span.SequenceEqual(other.Span);
 
     public override bool Equals(object? obj) => obj is ImmutableBytes other && Equals(other);
@@ -62,10 +64,13 @@ public readonly struct ImmutableBytes : IReadOnlyList<byte>, IEquatable<Immutabl
         return hash.ToHashCode();
     }
 
+    /// <summary>Compares two immutable byte sequences for value equality.</summary>
     public static bool operator ==(ImmutableBytes left, ImmutableBytes right) => left.Equals(right);
 
+    /// <summary>Compares two immutable byte sequences for value inequality.</summary>
     public static bool operator !=(ImmutableBytes left, ImmutableBytes right) => !left.Equals(right);
 
+    /// <summary>Returns an enumerator over the bytes in this sequence.</summary>
     public IEnumerator<byte> GetEnumerator() => ((IEnumerable<byte>)(Span.ToArray())).GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

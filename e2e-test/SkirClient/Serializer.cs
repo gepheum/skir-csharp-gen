@@ -23,14 +23,11 @@ public sealed class Serializer<T>
     /// <summary>
     /// Serializes <paramref name="value"/> to JSON.
     /// <para>
-    /// When <paramref name="readable"/> is <c>false</c> (the default) the result is
-    /// <em>dense</em> (field-number-based) JSON - safe for persistence and transport.
-    /// Renaming a field in the .skir file does not break deserialization of previously
-    /// persisted values.
+    /// Use <paramref name="readable"/> = <c>false</c> (default) for storage and
+    /// transport.
     /// </para>
     /// <para>
-    /// When <paramref name="readable"/> is <c>true</c> the result is human-readable,
-    /// name-based, indented JSON - use this for debugging only.
+    /// Use <paramref name="readable"/> = <c>true</c> for debugging and logs.
     /// </para>
     /// </summary>
     public string ToJson(T value, MustNameArguments _ = default, bool readable = false)
@@ -55,10 +52,9 @@ public sealed class Serializer<T>
     /// <summary>
     /// Deserializes a value from JSON.
     /// Accepts both dense and readable JSON.
-    /// When <paramref name="keepUnrecognizedValues"/> is <c>true</c>, field data not
-    /// declared in the current schema is preserved in the struct's internal
-    /// unrecognized-fields store so that re-serializing the value does not
-    /// silently discard forward-compatible fields.
+    /// When <paramref name="keepUnrecognizedValues"/> is <c>true</c>, unknown
+    /// data is preserved so a read/modify/write flow does not discard fields
+    /// added by newer schema versions.
     /// </summary>
     public T FromJson(string json, MustNameArguments _ = default, bool keepUnrecognizedValues = false)
     {
@@ -68,8 +64,8 @@ public sealed class Serializer<T>
 
     /// <summary>
     /// Deserializes a value from binary format.
-    /// When <paramref name="keepUnrecognizedValues"/> is <c>true</c>, unrecognized
-    /// field data is preserved for round-trip fidelity.
+    /// When <paramref name="keepUnrecognizedValues"/> is <c>true</c>, unknown
+    /// data is preserved for forward-compatible round trips.
     /// </summary>
     public T FromBytes(byte[] bytes, MustNameArguments _ = default, bool keepUnrecognizedValues = false)
     {

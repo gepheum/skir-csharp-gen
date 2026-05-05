@@ -6,8 +6,15 @@ namespace SkirClient;
 /// </summary>
 public sealed class RpcError : Exception
 {
+    /// <summary>
+    /// HTTP status code from the server, or <c>0</c> when no HTTP response was
+    /// available (for example timeout, cancellation, or transport failure).
+    /// </summary>
     public ushort StatusCode { get; }
 
+    /// <summary>Creates a new RPC error.</summary>
+    /// <param name="statusCode">HTTP status code, or <c>0</c> when unavailable.</param>
+    /// <param name="message">Human-readable error message.</param>
     public RpcError(ushort statusCode, string message)
         : base(message)
     {
@@ -17,6 +24,24 @@ public sealed class RpcError : Exception
 
 /// <summary>
 /// Sends RPCs to a SkirRPC service.
+/// <para>
+/// Reuse the same instance for multiple calls so default headers and
+/// connection pooling are shared.
+/// </para>
+/// <para>
+/// Example:
+/// </para>
+/// <code>
+/// var client = new ServiceClient("http://localhost:8787/myapi");
+///
+/// await client.InvokeRemote(
+///     Methods.AddUser,
+///     new AddUserRequest { User = user });
+///
+/// var resp = await client.InvokeRemote(
+///     Methods.GetUser,
+///     new GetUserRequest { UserId = 42 });
+/// </code>
 /// </summary>
 public sealed class ServiceClient
 {
@@ -24,6 +49,13 @@ public sealed class ServiceClient
     private readonly List<KeyValuePair<string, string>> _defaultHeaders = [];
     private readonly HttpClient _httpClient;
 
+    /// <summary>
+    /// Creates a client for a service endpoint.
+    /// </summary>
+    /// <param name="serviceUrl">
+    /// Endpoint URL (for example <c>http://localhost:8787/myapi</c>). Do not
+    /// include a query string.
+    /// </param>
     public ServiceClient(string serviceUrl)
     {
         if (serviceUrl.Contains('?', StringComparison.Ordinal))
@@ -35,6 +67,9 @@ public sealed class ServiceClient
 
     /// <summary>
     /// Adds a default HTTP header sent with every invocation.
+    /// <para>
+    /// Useful for auth tokens, tenant IDs, or tracing metadata.
+    /// </para>
     /// </summary>
     public ServiceClient WithDefaultHeader(string key, string value)
     {
@@ -45,6 +80,31 @@ public sealed class ServiceClient
     /// <summary>
     /// Invokes <paramref name="method"/> on the remote service with the given request.
     /// </summary>
+    /// <typeparam name="TRequest">Generated request type.</typeparam>
+    /// <typeparam name="TResponse">Generated response type.</typeparam>
+    /// <param name="method">Generated method descriptor from the <c>Methods</c> class.</param>
+    /// <param name="request">Request payload value.</param>
+    /// <param name="extraHeaders">
+    /// Optional per-call headers added in addition to default headers.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token for the HTTP request.</param>
+    /// <exception cref="RpcError">
+    /// Thrown when the server returns a non-success status code or when the
+    /// request/response transport fails.
+    /// </exception>
+    /// <remarks>
+    /// Per-call headers are useful for request-scoped metadata:
+    /// <code>
+    /// var response = await client.InvokeRemote(
+    ///     Methods.GetUser,
+    ///     new GetUserRequest { UserId = 42 },
+    ///     extraHeaders: new[]
+    ///     {
+    ///         new KeyValuePair&lt;string, string&gt;("x-request-id", requestId)
+    ///     },
+    ///     cancellationToken: ct);
+    /// </code>
+    /// </remarks>
     public async Task<TResponse> InvokeRemote<TRequest, TResponse>(
         Method<TRequest, TResponse> method,
         TRequest request,

@@ -14,29 +14,58 @@ namespace SkirClient;
 /// </summary>
 public static class Serializers
 {
+    /// <summary>Serializer for <see cref="bool"/>.</summary>
     public static Serializer<bool> Bool { get; } = new(new BoolAdapter());
+
+    /// <summary>Serializer for <see cref="int"/>.</summary>
     public static Serializer<int> Int32 { get; } = new(new Int32Adapter());
+
+    /// <summary>Serializer for <see cref="long"/>.</summary>
     public static Serializer<long> Int64 { get; } = new(new Int64Adapter());
+
+    /// <summary>Serializer for <see cref="ulong"/>.</summary>
     public static Serializer<ulong> Hash64 { get; } = new(new Hash64Adapter());
+
+    /// <summary>Serializer for <see cref="float"/>.</summary>
     public static Serializer<float> Float32 { get; } = new(new Float32Adapter());
+
+    /// <summary>Serializer for <see cref="double"/>.</summary>
     public static Serializer<double> Float64 { get; } = new(new Float64Adapter());
+
+    /// <summary>Serializer for <see cref="string"/>.</summary>
     public static Serializer<string> String { get; } = new(new StringAdapter());
+
+    /// <summary>Serializer for <see cref="ImmutableBytes"/>.</summary>
     public static Serializer<ImmutableBytes> Bytes { get; } = new(new BytesAdapter());
+
+    /// <summary>Serializer for <see cref="DateTimeOffset"/>.</summary>
     public static Serializer<DateTimeOffset> Timestamp { get; } = new(new TimestampAdapter());
 
     /// <summary>Serializer for an optional (nullable) reference type.</summary>
+    /// <typeparam name="T">The wrapped reference type.</typeparam>
+    /// <param name="inner">Serializer for non-null values.</param>
     public static Serializer<T?> Optional<T>(Serializer<T> inner) where T : class
         => new(new OptionalRefAdapter_<T>(inner));
 
     /// <summary>Serializer for an optional (nullable) value type.</summary>
+    /// <typeparam name="T">The wrapped value type.</typeparam>
+    /// <param name="inner">Serializer for non-null values.</param>
     public static Serializer<T?> OptionalValue<T>(Serializer<T> inner) where T : struct
         => new(new OptionalValueAdapter_<T>(inner));
 
     /// <summary>Serializer for a read-only array of values.</summary>
+    /// <typeparam name="T">Element type.</typeparam>
+    /// <param name="inner">Serializer for array items.</param>
+    /// <param name="_">Marker parameter encouraging named optional arguments.</param>
+    /// <param name="keyExtractor">
+    /// Optional key path used by generated helper methods for keyed lookups.
+    /// </param>
     public static Serializer<ImmutableArray<T>> Array<T>(Serializer<T> inner, MustNameArguments _ = default, string keyExtractor = "")
         => new(new ArrayAdapter_<T>(inner, keyExtractor));
 
     /// <summary>Serializer for a recursive struct field (<see cref="SkirClient.Recursive{T}"/>).</summary>
+    /// <typeparam name="T">Wrapped struct type.</typeparam>
+    /// <param name="inner">Serializer for wrapped values.</param>
     public static Serializer<SkirClient.Recursive<T>> Recursive<T>(Serializer<T> inner) where T : struct
         => new(new RecursiveAdapter_<T>(inner));
 
