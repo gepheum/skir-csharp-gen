@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace SkirClient;
+
 public sealed class RawResponse
 {
     public required string Data { get; init; }

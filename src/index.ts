@@ -1,6 +1,9 @@
 // Generate C# doc
 // Comments client...
+// Recursive: Equals/ToString
+// RecursiveSerializer -> Serializer
 // Public symbols on generated enums
+// More unit tests...
 // Reread everything...
 
 import {

@@ -103,12 +103,12 @@ internal static class BinaryUtils
                 return;
             case 243:
             case 245:
-            {
-                long n = DecodeNumber(data, ref offset);
-                if (n > 0)
-                    offset += (int)n;
-                return;
-            }
+                {
+                    long n = DecodeNumber(data, ref offset);
+                    if (n > 0)
+                        offset += (int)n;
+                    return;
+                }
             case 247:
                 SkipValue(data, ref offset);
                 return;
@@ -122,12 +122,12 @@ internal static class BinaryUtils
                 SkipValue(data, ref offset);
                 return;
             case 250:
-            {
-                long count = DecodeNumber(data, ref offset);
-                for (long i = 0; i < count; i++)
-                    SkipValue(data, ref offset);
-                return;
-            }
+                {
+                    long count = DecodeNumber(data, ref offset);
+                    for (long i = 0; i < count; i++)
+                        SkipValue(data, ref offset);
+                    return;
+                }
             case 251:
             case 252:
             case 253:

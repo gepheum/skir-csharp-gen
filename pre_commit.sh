@@ -5,6 +5,7 @@ set -e
 npm i
 npm run lint:fix
 npm run format
+cd e2e-test && dotnet format && cd ..
 npm run build
 npm run test
 # Fail if there are any C# warnings (e.g. unused imports) in non-generated code.

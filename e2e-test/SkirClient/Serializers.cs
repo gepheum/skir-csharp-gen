@@ -14,13 +14,13 @@ namespace SkirClient;
 /// </summary>
 public static class Serializers
 {
-    public static Serializer<bool>     Bool      { get; } = new(new BoolAdapter());
-    public static Serializer<int>      Int32     { get; } = new(new Int32Adapter());
-    public static Serializer<long>     Int64     { get; } = new(new Int64Adapter());
-    public static Serializer<ulong>    Hash64    { get; } = new(new Hash64Adapter());
-    public static Serializer<float>    Float32   { get; } = new(new Float32Adapter());
-    public static Serializer<double>   Float64   { get; } = new(new Float64Adapter());
-    public static Serializer<string>   String    { get; } = new(new StringAdapter());
+    public static Serializer<bool> Bool { get; } = new(new BoolAdapter());
+    public static Serializer<int> Int32 { get; } = new(new Int32Adapter());
+    public static Serializer<long> Int64 { get; } = new(new Int64Adapter());
+    public static Serializer<ulong> Hash64 { get; } = new(new Hash64Adapter());
+    public static Serializer<float> Float32 { get; } = new(new Float32Adapter());
+    public static Serializer<double> Float64 { get; } = new(new Float64Adapter());
+    public static Serializer<string> String { get; } = new(new StringAdapter());
     public static Serializer<ImmutableBytes> Bytes { get; } = new(new BytesAdapter());
     public static Serializer<DateTimeOffset> Timestamp { get; } = new(new TimestampAdapter());
 
@@ -82,36 +82,36 @@ public static class Serializers
 
     // ---- Binary wire-format helpers ----
 
-        // Returns bytes in little-endian order regardless of host endianness.
-        private static byte[] LE(byte[] bytes)
-        {
-            if (!BitConverter.IsLittleEndian) System.Array.Reverse(bytes);
-            return bytes;
-        }
-        internal static byte[] LE_(byte[] bytes) => LE(bytes);
+    // Returns bytes in little-endian order regardless of host endianness.
+    private static byte[] LE(byte[] bytes)
+    {
+        if (!BitConverter.IsLittleEndian) System.Array.Reverse(bytes);
+        return bytes;
+    }
+    internal static byte[] LE_(byte[] bytes) => LE(bytes);
 
-        // Encodes an i32 using the skir variable-length wire format.
-        //   0..=231         → single byte
-        //   232..=65535     → wire 232 + u16 LE
-        //   65536..=i32.MAX → wire 233 + u32 LE
-        //   -256..=-1       → wire 235 + u8(v+256)
-        //   -65536..=-257   → wire 236 + u16 LE(v+65536)
-        //   i32.MIN..=-65537→ wire 237 + i32 LE
-        private static void EncodeI32(int v, List<byte> output)
+    // Encodes an i32 using the skir variable-length wire format.
+    //   0..=231         → single byte
+    //   232..=65535     → wire 232 + u16 LE
+    //   65536..=i32.MAX → wire 233 + u32 LE
+    //   -256..=-1       → wire 235 + u8(v+256)
+    //   -65536..=-257   → wire 236 + u16 LE(v+65536)
+    //   i32.MIN..=-65537→ wire 237 + i32 LE
+    private static void EncodeI32(int v, List<byte> output)
+    {
+        if (v >= 0)
         {
-            if (v >= 0)
-            {
-                if (v <= 231) { output.Add((byte)v); }
-                else if (v <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)v))); }
-                else { output.Add(233); output.AddRange(LE(BitConverter.GetBytes((uint)v))); }
-            }
-            else
-            {
-                if (v >= -256) { output.Add(235); output.Add((byte)(v + 256)); }
-                else if (v >= -65536) { output.Add(236); output.AddRange(LE(BitConverter.GetBytes((ushort)(v + 65536)))); }
-                else { output.Add(237); output.AddRange(LE(BitConverter.GetBytes(v))); }
-            }
+            if (v <= 231) { output.Add((byte)v); }
+            else if (v <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)v))); }
+            else { output.Add(233); output.AddRange(LE(BitConverter.GetBytes((uint)v))); }
         }
+        else
+        {
+            if (v >= -256) { output.Add(235); output.Add((byte)(v + 256)); }
+            else if (v >= -65536) { output.Add(236); output.AddRange(LE(BitConverter.GetBytes((ushort)(v + 65536)))); }
+            else { output.Add(237); output.AddRange(LE(BitConverter.GetBytes(v))); }
+        }
+    }
 
     // Decodes the body of a variable-length number given the already-consumed wire byte.
     private static long DecodeNumberBody(byte wire, byte[] data, ref int offset)
@@ -177,7 +177,7 @@ public static class Serializers
     // ---- Timestamp / String / Bytes helpers ----
 
     private const long MinTimestampMillis = -8_640_000_000_000_000L;
-    private const long MaxTimestampMillis =  8_640_000_000_000_000L;
+    private const long MaxTimestampMillis = 8_640_000_000_000_000L;
 
     // Converts a DateTimeOffset to unix milliseconds, clamped to the Skir wire range.
     private static long DateTimeOffsetToMillis(DateTimeOffset dto) =>
@@ -224,7 +224,7 @@ public static class Serializers
         {
             switch (c)
             {
-                case '"':  output.Append("\\\""); break;
+                case '"': output.Append("\\\""); break;
                 case '\\': output.Append("\\\\"); break;
                 case '\n': output.Append("\\n"); break;
                 case '\r': output.Append("\\r"); break;

@@ -413,30 +413,30 @@ internal static class TypeDescriptorJson
                 CollectRecords(arr.ItemType, order, seen);
                 return;
             case StructDescriptor s:
-            {
-                var rid = s.RecordId;
-                if (seen.ContainsKey(rid))
-                    return; // already visited or cycle guard
-                seen[rid] = new JsonObject(); // placeholder to break cycles
-                seen[rid] = StructRecordToNode(s);
-                order.Add(rid);
-                foreach (var f in s.Fields)
-                    CollectRecords(f.FieldType, order, seen);
-                return;
-            }
-            case EnumDescriptor e:
-            {
-                var rid = e.RecordId;
-                if (seen.ContainsKey(rid))
+                {
+                    var rid = s.RecordId;
+                    if (seen.ContainsKey(rid))
+                        return; // already visited or cycle guard
+                    seen[rid] = new JsonObject(); // placeholder to break cycles
+                    seen[rid] = StructRecordToNode(s);
+                    order.Add(rid);
+                    foreach (var f in s.Fields)
+                        CollectRecords(f.FieldType, order, seen);
                     return;
-                seen[rid] = new JsonObject();
-                seen[rid] = EnumRecordToNode(e);
-                order.Add(rid);
-                foreach (var v in e.Variants)
-                    if (v.VariantType is { } vt)
-                        CollectRecords(vt, order, seen);
-                return;
-            }
+                }
+            case EnumDescriptor e:
+                {
+                    var rid = e.RecordId;
+                    if (seen.ContainsKey(rid))
+                        return;
+                    seen[rid] = new JsonObject();
+                    seen[rid] = EnumRecordToNode(e);
+                    order.Add(rid);
+                    foreach (var v in e.Variants)
+                        if (v.VariantType is { } vt)
+                            CollectRecords(vt, order, seen);
+                    return;
+                }
         }
     }
 
@@ -518,12 +518,12 @@ internal static class TypeDescriptorJson
                     ["value"] = TypeSignatureToNode(opt.OtherType),
                 };
             case ArrayDescriptor arr:
-            {
-                var valueObj = new JsonObject { ["item"] = TypeSignatureToNode(arr.ItemType) };
-                if (arr.KeyExtractor.Length > 0)
-                    valueObj["key_extractor"] = arr.KeyExtractor;
-                return new JsonObject { ["kind"] = "array", ["value"] = valueObj };
-            }
+                {
+                    var valueObj = new JsonObject { ["item"] = TypeSignatureToNode(arr.ItemType) };
+                    if (arr.KeyExtractor.Length > 0)
+                        valueObj["key_extractor"] = arr.KeyExtractor;
+                    return new JsonObject { ["kind"] = "array", ["value"] = valueObj };
+                }
             case StructDescriptor s:
                 return new JsonObject { ["kind"] = "record", ["value"] = s.RecordId };
             case EnumDescriptor e:
@@ -580,49 +580,49 @@ internal static class TypeDescriptorJson
             switch (descriptor)
             {
                 case StructDescriptor s:
-                {
-                    s.SetRemovedNumbers(removedNumbers);
-                    var fields = new List<StructField>();
-                    foreach (var fNode in rec["fields"]?.AsArray() ?? [])
                     {
-                        var f = fNode!.AsObject();
-                        var name = GetStr(f, "name");
-                        var number = GetInt(f["number"]);
-                        var typeObj =
-                            f["type"]?.AsObject()
-                            ?? throw new FormatException(
-                                $"Struct field \"{name}\" is missing \"type\"."
-                            );
-                        var fieldType = ParseTypeSignature(typeObj, idToDescriptor);
-                        var fDoc = GetStr(f, "doc");
-                        fields.Add(new StructField(name, number, fieldType, fDoc));
+                        s.SetRemovedNumbers(removedNumbers);
+                        var fields = new List<StructField>();
+                        foreach (var fNode in rec["fields"]?.AsArray() ?? [])
+                        {
+                            var f = fNode!.AsObject();
+                            var name = GetStr(f, "name");
+                            var number = GetInt(f["number"]);
+                            var typeObj =
+                                f["type"]?.AsObject()
+                                ?? throw new FormatException(
+                                    $"Struct field \"{name}\" is missing \"type\"."
+                                );
+                            var fieldType = ParseTypeSignature(typeObj, idToDescriptor);
+                            var fDoc = GetStr(f, "doc");
+                            fields.Add(new StructField(name, number, fieldType, fDoc));
+                        }
+                        s.SetFields(fields);
+                        break;
                     }
-                    s.SetFields(fields);
-                    break;
-                }
                 case EnumDescriptor e:
-                {
-                    e.SetRemovedNumbers(removedNumbers);
-                    var variants = new List<EnumVariant>();
-                    foreach (var vNode in rec["variants"]?.AsArray() ?? [])
                     {
-                        var v = vNode!.AsObject();
-                        var name = GetStr(v, "name");
-                        var number = GetInt(v["number"]);
-                        var vDoc = GetStr(v, "doc");
-                        if (v["type"]?.AsObject() is { } typeObj)
+                        e.SetRemovedNumbers(removedNumbers);
+                        var variants = new List<EnumVariant>();
+                        foreach (var vNode in rec["variants"]?.AsArray() ?? [])
                         {
-                            var vType = ParseTypeSignature(typeObj, idToDescriptor);
-                            variants.Add(new EnumWrapperVariant(name, number, vType, vDoc));
+                            var v = vNode!.AsObject();
+                            var name = GetStr(v, "name");
+                            var number = GetInt(v["number"]);
+                            var vDoc = GetStr(v, "doc");
+                            if (v["type"]?.AsObject() is { } typeObj)
+                            {
+                                var vType = ParseTypeSignature(typeObj, idToDescriptor);
+                                variants.Add(new EnumWrapperVariant(name, number, vType, vDoc));
+                            }
+                            else
+                            {
+                                variants.Add(new EnumConstantVariant(name, number, vDoc));
+                            }
                         }
-                        else
-                        {
-                            variants.Add(new EnumConstantVariant(name, number, vDoc));
-                        }
+                        e.SetVariants(variants);
+                        break;
                     }
-                    e.SetVariants(variants);
-                    break;
-                }
             }
         }
 
@@ -656,22 +656,22 @@ internal static class TypeDescriptorJson
                     ParseTypeSignature(val.AsObject(), records)
                 );
             case "array":
-            {
-                var valObj = val.AsObject();
-                var itemObj =
-                    valObj["item"]?.AsObject()
-                    ?? throw new FormatException("Array type signature is missing \"item\".");
-                var item = ParseTypeSignature(itemObj, records);
-                var key = valObj["key_extractor"]?.GetValue<string>() ?? string.Empty;
-                return new ArrayDescriptor(item, key);
-            }
+                {
+                    var valObj = val.AsObject();
+                    var itemObj =
+                        valObj["item"]?.AsObject()
+                        ?? throw new FormatException("Array type signature is missing \"item\".");
+                    var item = ParseTypeSignature(itemObj, records);
+                    var key = valObj["key_extractor"]?.GetValue<string>() ?? string.Empty;
+                    return new ArrayDescriptor(item, key);
+                }
             case "record":
-            {
-                var recordId = val.GetValue<string>();
-                return records.TryGetValue(recordId, out var desc)
-                    ? desc
-                    : throw new FormatException($"Unknown record id \"{recordId}\".");
-            }
+                {
+                    var recordId = val.GetValue<string>();
+                    return records.TryGetValue(recordId, out var desc)
+                        ? desc
+                        : throw new FormatException($"Unknown record id \"{recordId}\".");
+                }
             default:
                 throw new FormatException($"Unknown type kind: \"{kind}\".");
         }

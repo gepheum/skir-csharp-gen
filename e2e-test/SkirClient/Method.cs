@@ -6,8 +6,8 @@ namespace SkirClient;
 /// request/response serializers needed for routing and encoding RPC calls.
 /// </summary>
 public sealed record Method<TRequest, TResponse>(
-	string Name,
-	int Number,
-	string Doc,
-	Serializer<TRequest> RequestSerializer,
-	Serializer<TResponse> ResponseSerializer);
+    string Name,
+    int Number,
+    string Doc,
+    Serializer<TRequest> RequestSerializer,
+    Serializer<TResponse> ResponseSerializer);

@@ -30,7 +30,7 @@ public readonly struct Recursive<T>
     /// <summary>
     /// True when this instance represents Zig's <c>default_value</c> branch.
     /// </summary>
-        public bool IsDefaultValue => _box is null;
+    public bool IsDefaultValue => _box is null;
 
     /// <summary>
     /// True when this instance represents Zig's <c>value</c> branch.
@@ -50,7 +50,7 @@ public readonly struct Recursive<T>
     /// <summary>
     /// Returns Zig's <c>default_value</c> branch.
     /// </summary>
-        public static readonly Recursive<T> DefaultValue = new(box: null);
+    public static readonly Recursive<T> DefaultValue = new(box: null);
 
     /// <summary>
     /// Returns Zig's <c>value</c> branch.
@@ -59,6 +59,6 @@ public readonly struct Recursive<T>
     {
         if (value is null)
             throw new global::System.ArgumentNullException(nameof(value));
-            return new Recursive<T>(box: new Box(value));
+        return new Recursive<T>(box: new Box(value));
     }
 }

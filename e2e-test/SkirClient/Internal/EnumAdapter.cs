@@ -258,50 +258,50 @@ public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
         switch (json.ValueKind)
         {
             case JsonValueKind.Number:
-            {
-                int num = json.TryGetInt32(out int i) ? i : (int)json.GetDouble();
-                return ResolveConstantLookup(num, keep, json);
-            }
+                {
+                    int num = json.TryGetInt32(out int i) ? i : (int)json.GetDouble();
+                    return ResolveConstantLookup(num, keep, json);
+                }
             case JsonValueKind.True:
                 return ResolveConstantLookup(1, keep, json);
             case JsonValueKind.False:
                 return ResolveConstantLookup(0, keep, json);
             case JsonValueKind.String:
-            {
-                string s = json.GetString()!;
-                if (!_nameToKindOrdinal.TryGetValue(s, out int ko))
-                    return UnknownFromJson(0);
-                if (ko == 0) return UnknownFromJson(0);
-                if (ko < _kindOrdinalToEntry.Count && _kindOrdinalToEntry[ko] is IVariantEntry entry)
                 {
-                    if (entry.Constant is T c) return c;
-                    // Constant-context for a wrapper: return default payload wrapped
+                    string s = json.GetString()!;
+                    if (!_nameToKindOrdinal.TryGetValue(s, out int ko))
+                        return UnknownFromJson(0);
+                    if (ko == 0) return UnknownFromJson(0);
+                    if (ko < _kindOrdinalToEntry.Count && _kindOrdinalToEntry[ko] is IVariantEntry entry)
+                    {
+                        if (entry.Constant is T c) return c;
+                        // Constant-context for a wrapper: return default payload wrapped
+                        return _default;
+                    }
                     return _default;
                 }
-                return _default;
-            }
             case JsonValueKind.Array when json.GetArrayLength() == 2:
-            {
-                var arr = json.EnumerateArray().ToArray();
-                int num = arr[0].TryGetInt32(out int i) ? i : (int)arr[0].GetDouble();
-                return ResolveWrapperFromJson(num, arr[1], keep, json);
-            }
-            case JsonValueKind.Object:
-            {
-                string kindName = json.TryGetProperty("kind", out var kp) && kp.ValueKind == JsonValueKind.String
-                    ? kp.GetString()! : "";
-                var valJson = json.TryGetProperty("value", out var vp) ? vp : default;
-                if (!_nameToKindOrdinal.TryGetValue(kindName, out int ko))
-                    return UnknownFromJson(0);
-                if (ko == 0) return UnknownFromJson(0);
-                if (ko < _kindOrdinalToEntry.Count && _kindOrdinalToEntry[ko] is IVariantEntry entry)
                 {
-                    if (entry.Constant is T c) return c;
-                    if (valJson.ValueKind != JsonValueKind.Undefined)
-                        return entry.WrapFromJson(valJson, keep);
+                    var arr = json.EnumerateArray().ToArray();
+                    int num = arr[0].TryGetInt32(out int i) ? i : (int)arr[0].GetDouble();
+                    return ResolveWrapperFromJson(num, arr[1], keep, json);
                 }
-                return _default;
-            }
+            case JsonValueKind.Object:
+                {
+                    string kindName = json.TryGetProperty("kind", out var kp) && kp.ValueKind == JsonValueKind.String
+                        ? kp.GetString()! : "";
+                    var valJson = json.TryGetProperty("value", out var vp) ? vp : default;
+                    if (!_nameToKindOrdinal.TryGetValue(kindName, out int ko))
+                        return UnknownFromJson(0);
+                    if (ko == 0) return UnknownFromJson(0);
+                    if (ko < _kindOrdinalToEntry.Count && _kindOrdinalToEntry[ko] is IVariantEntry entry)
+                    {
+                        if (entry.Constant is T c) return c;
+                        if (valJson.ValueKind != JsonValueKind.Undefined)
+                            return entry.WrapFromJson(valJson, keep);
+                    }
+                    return _default;
+                }
             default:
                 return _default;
         }
