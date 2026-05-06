@@ -106,6 +106,13 @@ public abstract class TypeDescriptor
     /// </summary>
     public static TypeDescriptor ParseFromJson(string json) =>
         TypeDescriptorJson.Deserialize(json);
+
+    /// <summary>
+    /// Parses a <see cref="TypeDescriptor"/> from a <see cref="JsonElement"/>
+    /// containing its JSON representation, as produced by <see cref="AsJson"/>.
+    /// </summary>
+    public static TypeDescriptor ParseFromJson(JsonElement element) =>
+        TypeDescriptorJson.Deserialize(element);
 }
 
 // =============================================================================
@@ -581,6 +588,14 @@ internal static class TypeDescriptorJson
     {
         var root =
             JsonNode.Parse(json)?.AsObject()
+            ?? throw new FormatException("TypeDescriptor JSON must be a JSON object.");
+        return ParseFromValue(root);
+    }
+
+    public static TypeDescriptor Deserialize(JsonElement element)
+    {
+        var root =
+            JsonObject.Create(element)
             ?? throw new FormatException("TypeDescriptor JSON must be a JSON object.");
         return ParseFromValue(root);
     }
