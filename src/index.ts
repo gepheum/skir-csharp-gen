@@ -1,7 +1,4 @@
 // Generate C# doc
-// Comments client...
-// Recursive: better method names
-// Rm public symbols on generated enums...
 // More unit tests...
 // Reread everything...
 // StringSerializer always outputs valid UTF-8 string...
@@ -10,6 +7,7 @@ import {
   convertCase,
   type CodeGenerator,
   type Constant,
+  type Doc,
   type FieldPath,
   type Module,
   type PrimitiveType,
@@ -171,6 +169,8 @@ class CsharpSourceFileGenerator {
 
       if (constLiteral !== null) {
         // Simple types can use the `const` keyword.
+        // Add XML documentation for the constant
+        this.lines.push(...this.formatDocAsXmlSummary(constant.doc));
         this.lines.push(
           ` public const ${constLiteral.csharpType} ${propName} = ${constLiteral.literal};`,
         );
@@ -186,6 +186,8 @@ class CsharpSourceFileGenerator {
         );
         const lazyField = `_${propName.charAt(0).toLowerCase()}${propName.slice(1)}_Lazy`;
 
+        // Add XML documentation for the constant
+        this.lines.push(...this.formatDocAsXmlSummary(constant.doc));
         this.lines.push(
           ` private static readonly global::System.Lazy<${csharpType}> ${lazyField}`,
         );
@@ -230,6 +232,8 @@ class CsharpSourceFileGenerator {
       const methodType = `global::SkirClient.Method<${requestType}, ${responseType}>`;
       const lazyField = `_${propName.charAt(0).toLowerCase()}${propName.slice(1)}_Lazy`;
 
+      // Add XML documentation for the method
+      this.lines.push(...this.formatDocAsXmlSummary(method.doc));
       this.lines.push(
         ` private static readonly global::System.Lazy<${methodType}> ${lazyField}`,
       );
@@ -272,6 +276,8 @@ class CsharpSourceFileGenerator {
   private writeStruct(record: RecordLocation, name: string): void {
     const fqName = this.getFullyQualifiedTypeName(record);
 
+    // Add XML documentation for the struct
+    this.lines.push(...this.formatDocAsXmlSummary(record.record.doc));
     this.lines.push(`public readonly record struct ${name}`);
     this.lines.push("{");
 
@@ -288,6 +294,9 @@ class CsharpSourceFileGenerator {
       const fieldType = this.typeSpeller.getCsharpFieldType(field);
       const defaultExpr = this.typeSpeller.getFieldDefaultExpr(field);
       fieldDefaults.push({ propertyName, defaultExpr });
+
+      // Add XML documentation for the field
+      this.lines.push(...this.formatDocAsXmlSummary(field.doc));
       this.lines.push(
         ` public required ${fieldType} ${propertyName} { get; init; }`,
       );
@@ -369,6 +378,9 @@ class CsharpSourceFileGenerator {
       const findByKeyOrDefaultName = `${propertyName}_FindBy${keyPathName}OrDefault`;
 
       this.lines.push(
+        ` /// <summary>Finds an item in ${propertyName} by ${keyPathName}, or returns null if not found.</summary>`,
+      );
+      this.lines.push(
         ` public ${itemOptionalType} ${findByKeyName}(${keyType} key)`,
       );
       this.lines.push(" {");
@@ -381,6 +393,9 @@ class CsharpSourceFileGenerator {
       this.lines.push(" }");
       this.lines.push("");
 
+      this.lines.push(
+        ` /// <summary>Finds an item in ${propertyName} by ${keyPathName}, or returns the default value if not found.</summary>`,
+      );
       this.lines.push(
         ` public ${itemType} ${findByKeyOrDefaultName}(${keyType} key)`,
       );
@@ -413,6 +428,8 @@ class CsharpSourceFileGenerator {
       prefixedName: convertCase(v.name.text, "UpperCamel"),
     }));
 
+    // Add XML documentation for the enum
+    this.lines.push(...this.formatDocAsXmlSummary(record.record.doc));
     this.lines.push(`public sealed record ${name}`);
     this.lines.push("{");
 
@@ -447,6 +464,8 @@ class CsharpSourceFileGenerator {
 
     for (const { variant, memberName } of variantInfos) {
       if (!variant.type) {
+        // Add XML documentation for constant variant
+        this.lines.push(...this.formatDocAsXmlSummary(variant.doc));
         const upperCamel = convertCase(variant.name.text, "UpperCamel");
         const kindName = upperCamel;
         this.lines.push(
@@ -466,8 +485,15 @@ class CsharpSourceFileGenerator {
       const payloadType = this.typeSpeller.getCsharpType(variant.type);
       const kindName = `${convertCase(variant.name.text, "UpperCamel")}Wrapper`;
 
+      // Add XML documentation for Wrap* method
+      this.lines.push(...this.formatDocAsXmlSummary(variant.doc));
       this.lines.push(
         ` public static ${fqBase} Wrap${prefixedName}(${payloadType} value) => new(${kindTypeName}.${kindName}, value);`,
+      );
+
+      // Add brief doc for As* method
+      this.lines.push(
+        ` /// <summary>Extracts the value if this is a '${convertCase(variant.name.text, "lower_underscore")}' variant, or throws InvalidOperationException.</summary>`,
       );
       this.lines.push(` public ${payloadType} As${prefixedName}()`);
       this.lines.push(" {");
@@ -890,8 +916,8 @@ class CsharpSourceFileGenerator {
     return `item => ${selectorExpr}`;
   }
 
-  private getDocText(doc: unknown): string {
-    const pieces = (doc as { pieces?: readonly unknown[] } | undefined)?.pieces;
+  private getDocText(doc: Doc): string {
+    const pieces = doc.pieces;
     if (!pieces || pieces.length === 0) {
       return "";
     }
@@ -916,6 +942,38 @@ class CsharpSourceFileGenerator {
       .join("")
       .trim();
     return text;
+  }
+
+  /** Formats doc text as XML documentation comment lines. Returns an array of strings
+   * (one per line) ready to be pushed to this.lines. Returns empty array if doc is empty. */
+  private formatDocAsXmlSummary(doc: Doc): string[] {
+    const text = this.getDocText(doc);
+    if (!text) {
+      return [];
+    }
+
+    // Split into lines and escape XML special characters
+    const escaped = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;");
+
+    const lines = escaped.split("\n");
+    if (lines.length === 1) {
+      // Single-line doc: use inline summary
+      return [` /// <summary>${lines[0]}</summary>`];
+    }
+
+    // Multi-line doc: use block summary
+    const result: string[] = [];
+    result.push(" /// <summary>");
+    for (const line of lines) {
+      result.push(` /// ${line}`);
+    }
+    result.push(" /// </summary>");
+    return result;
   }
 
   /** Returns the fully-qualified C# type name for a record, e.g.
