@@ -148,7 +148,7 @@ export class TypeSpeller {
    */
   getSerializerExpr(
     type: ResolvedType,
-    initCtx: boolean,
+    initCtx?: "init",
     isRecursive: false | "soft" | "via-optional" | "hard" = false,
   ): string {
     if (isRecursive === "hard") {
@@ -169,7 +169,7 @@ export class TypeSpeller {
     return this.getSerializerExprInner(type, initCtx);
   }
 
-  private getSerializerExprInner(type: ResolvedType, initCtx: boolean): string {
+  private getSerializerExprInner(type: ResolvedType, initCtx?: "init"): string {
     switch (type.kind) {
       case "primitive": {
         switch (type.primitive) {
@@ -199,7 +199,7 @@ export class TypeSpeller {
         const ns = modulePathToNamespace(loc.modulePath);
         const cname = getTypeName(loc);
         const fqn = `global::${ns}.${cname}`;
-        if (initCtx && loc.modulePath === this.modulePath) {
+        if (initCtx === "init" && loc.modulePath === this.modulePath) {
           return `ModuleInit_.${cname}_Serializer`;
         }
         return `${fqn}.Serializer`;

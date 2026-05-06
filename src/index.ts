@@ -178,7 +178,7 @@ class CsharpSourceFileGenerator {
       } else {
         const type = constant.type!;
         const csharpType = this.typeSpeller.getCsharpType(type);
-        const serExpr = this.typeSpeller.getSerializerExpr(type, false);
+        const serExpr = this.typeSpeller.getSerializerExpr(type);
         // Serialize the DenseJson value to a JSON string, then wrap it in a C#
         // string literal by JSON-stringifying the result (escaping special chars).
         const jsonLiteral = JSON.stringify(
@@ -222,11 +222,11 @@ class CsharpSourceFileGenerator {
       const responseType = this.typeSpeller.getCsharpType(method.responseType!);
       const requestSerExpr = this.typeSpeller.getSerializerExpr(
         method.requestType!,
-        false,
+        undefined,
       );
       const responseSerExpr = this.typeSpeller.getSerializerExpr(
         method.responseType!,
-        false,
+        undefined,
       );
 
       const methodType = `global::SkirClient.Method<${requestType}, ${responseType}>`;
@@ -712,7 +712,7 @@ class CsharpSourceFileGenerator {
         const propertyName = toFieldPropertyName(field, name);
         const serExpr = this.typeSpeller.getSerializerExpr(
           field.type!,
-          true,
+          "init",
           field.isRecursive,
         );
         this.lines.push(
@@ -739,7 +739,10 @@ class CsharpSourceFileGenerator {
       const kindOrdinal = i + 1;
       if (variant.type) {
         const payloadCsharpType = this.typeSpeller.getCsharpType(variant.type);
-        const serExpr = this.typeSpeller.getSerializerExpr(variant.type, true);
+        const serExpr = this.typeSpeller.getSerializerExpr(
+          variant.type,
+          "init",
+        );
         this.lines.push(
           `  ${name}_Adapter.AddWrapperVariant<${payloadCsharpType}>(${JSON.stringify(variant.name.text)}, ${variant.number}, ${kindOrdinal}, ${serExpr}, v => ${fqBase}.Wrap${prefixedName}(v), x => x.As${prefixedName}(), ${JSON.stringify(this.getDocText(variant.doc))});`,
         );
