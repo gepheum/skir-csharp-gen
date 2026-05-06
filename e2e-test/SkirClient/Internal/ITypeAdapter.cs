@@ -3,11 +3,6 @@ using System.Text.Json;
 
 namespace SkirClient.Internal;
 
-/// <summary>
-/// Internal serialization contract for a single type.
-/// Implemented by concrete type adapters and wrapped by
-/// <see cref="SkirClient.Serializer{T}"/>.
-/// </summary>
 internal interface ITypeAdapter<T>
 {
     /// <summary>Returns <c>true</c> when <paramref name="input"/> equals the default (zero) value.</summary>

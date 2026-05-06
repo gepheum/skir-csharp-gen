@@ -1,18 +1,6 @@
 namespace SkirClient.Internal;
 
 // =============================================================================
-// UnrecognizedFormat
-// =============================================================================
-
-
-/// <summary>The serialization format used to capture unrecognized data.</summary>
-internal enum UnrecognizedFormat
-{
-    DenseJson,
-    BinaryBytes,
-}
-
-// =============================================================================
 // UnrecognizedFields<T>
 // =============================================================================
 
@@ -122,4 +110,16 @@ public sealed class UnrecognizedVariant<T> : IEquatable<UnrecognizedVariant<T>>
     public override bool Equals(object? obj) => Equals(obj as UnrecognizedVariant<T>);
 
     public override int GetHashCode() => HashCode.Combine(Format, Number, Value.Length);
+}
+
+// =============================================================================
+// UnrecognizedFormat
+// =============================================================================
+
+
+/// <summary>The serialization format used to capture unrecognized data.</summary>
+internal enum UnrecognizedFormat
+{
+    DenseJson,
+    BinaryBytes,
 }

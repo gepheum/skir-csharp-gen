@@ -3,14 +3,6 @@ using System.Text.Json;
 
 namespace SkirClient.Internal;
 
-/// <summary>
-/// A fully functional <see cref="Serializer{T}"/> for a Skir struct type.
-/// <para>
-/// Usage: construct, call <see cref="AddField{V}"/> for each field and
-/// <see cref="AddRemovedNumber"/> for each removed slot, then call
-/// <see cref="Finalize_"/> exactly once.
-/// </para>
-/// </summary>
 public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struct
 {
     // ---- per-field type-erased interface ------------------------------------

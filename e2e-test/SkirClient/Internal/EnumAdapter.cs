@@ -2,14 +2,7 @@ using System.Text;
 using System.Text.Json;
 
 namespace SkirClient.Internal;
-/// <summary>
-/// A fully functional <see cref="Serializer{T}"/> for a Skir enum type.
-/// <para>
-/// Usage: construct, call <see cref="AddConstantVariant"/>,
-/// <see cref="AddWrapperVariant{V}"/>, and <see cref="AddRemovedNumber"/> for
-/// each variant/slot, then call <see cref="Finalize_"/> exactly once.
-/// </para>
-/// </summary>
+
 public sealed class EnumAdapter<T> : ITypeAdapter<T> where T : class
 {
     // ---- per-variant type-erased interface ---------------------------------

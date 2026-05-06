@@ -2,9 +2,6 @@ using System.Collections.Immutable;
 
 namespace SkirClient.Internal;
 
-/// <summary>
-/// Builds and caches per-array index maps.
-/// </summary>
 public sealed class Indexer<TValue, TKey> where TKey : notnull
 {
     private readonly Func<TValue, TKey> _keySelector;
