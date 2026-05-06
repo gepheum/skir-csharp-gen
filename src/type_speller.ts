@@ -200,7 +200,7 @@ export class TypeSpeller {
         const cname = getTypeName(loc);
         const fqn = `global::${ns}.${cname}`;
         if (initCtx && loc.modulePath === this.modulePath) {
-          return `_ModuleInit.${cname}_Serializer`;
+          return `ModuleInit_.${cname}_Serializer`;
         }
         return `${fqn}.Serializer`;
       }
