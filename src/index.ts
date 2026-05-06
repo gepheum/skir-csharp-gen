@@ -113,7 +113,7 @@ class CsharpSourceFileGenerator {
       this.lines.push("// Module initialization");
       this.lines.push(`// ${"=".repeat(76)}`);
       this.lines.push("");
-      this.lines.push("file static class _ModuleInit");
+      this.lines.push("file static class ModuleInit_");
       this.lines.push("{");
 
       for (const record of moduleRecords) {
@@ -135,7 +135,7 @@ class CsharpSourceFileGenerator {
       }
       this.lines.push("  return true;");
       this.lines.push(" });");
-      this.lines.push(" public static void _ensureInit() => _ = _lazy.Value;");
+      this.lines.push(" public static void EnsureInit() => _ = _lazy.Value;");
 
       this.lines.push("}");
     }
@@ -324,7 +324,7 @@ class CsharpSourceFileGenerator {
       ` public static global::SkirClient.Serializer<${fqName}> Serializer`,
     );
     this.lines.push(
-      ` { get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
+      ` { get { ModuleInit_.EnsureInit(); return ModuleInit_.${name}_Serializer; } }`,
     );
 
     const keyedArrayIndexers = this.computeStructIndexerInfos(record);
@@ -585,7 +585,7 @@ class CsharpSourceFileGenerator {
       ` public static global::SkirClient.Serializer<${fqBase}> Serializer`,
     );
     this.lines.push(
-      ` { get { _ModuleInit._ensureInit(); return _ModuleInit.${name}_Serializer; } }`,
+      ` { get { ModuleInit_.EnsureInit(); return ModuleInit_.${name}_Serializer; } }`,
     );
 
     this.lines.push("}");
