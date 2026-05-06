@@ -220,14 +220,8 @@ class CsharpSourceFileGenerator {
 
       const requestType = this.typeSpeller.getCsharpType(method.requestType!);
       const responseType = this.typeSpeller.getCsharpType(method.responseType!);
-      const requestSerExpr = this.typeSpeller.getSerializerExpr(
-        method.requestType!,
-        undefined,
-      );
-      const responseSerExpr = this.typeSpeller.getSerializerExpr(
-        method.responseType!,
-        undefined,
-      );
+      const requestSerExpr = this.typeSpeller.getSerializerExpr(method.requestType!);
+      const responseSerExpr = this.typeSpeller.getSerializerExpr(method.responseType!);
 
       const methodType = `global::SkirClient.Method<${requestType}, ${responseType}>`;
       const lazyField = `_${propName.charAt(0).toLowerCase()}${propName.slice(1)}_Lazy`;
