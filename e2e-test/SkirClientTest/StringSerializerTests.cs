@@ -1,4 +1,4 @@
-using SkirClient;
+using System.Text;
 
 namespace SkirClientTest;
 
@@ -45,6 +45,18 @@ public sealed class StringSerializerTests
     public void ToJson_SameInReadableMode()
     {
         Assert.Equal(S.ToJson("hello", readable: false), S.ToJson("hello", readable: true));
+    }
+
+    [Fact]
+    public void ToJson_LoneSurrogate_IsSanitized()
+    {
+        string invalid = "\ud800";
+
+        Assert.Equal("\"\uFFFD\"", S.ToJson(invalid));
+
+        var strictUtf8 = new UTF8Encoding(false, true);
+        byte[] utf8 = strictUtf8.GetBytes(S.ToJson(invalid));
+        Assert.Equal("\"�\"", strictUtf8.GetString(utf8));
     }
 
     // =========================================================================
@@ -95,6 +107,21 @@ public sealed class StringSerializerTests
         {
             Assert.Equal(v, S.FromBytes(S.ToBytes(v)));
         }
+    }
+
+    [Fact]
+    public void Encode_LoneSurrogate_UsesReplacementCharacterUtf8()
+    {
+        string invalid = "\ud800";
+
+        var bytes = S.ToBytes(invalid);
+
+        Assert.Equal(new byte[]
+        {
+            (byte)'s', (byte)'k', (byte)'i', (byte)'r',
+            0xF3, 0x03, 0xEF, 0xBF, 0xBD,
+        }, bytes);
+        Assert.Equal("�", S.FromBytes(bytes));
     }
 
     // =========================================================================

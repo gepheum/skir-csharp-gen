@@ -209,6 +209,7 @@ file static class SHelper_
     // Writes s as a JSON string literal (with surrounding quotes) using Skir escaping rules.
     internal static void WriteJsonString(string s, StringBuilder output)
     {
+        s = SanitizeUnicodeString(s);
         output.Append('"');
         foreach (char c in s)
         {
@@ -230,6 +231,35 @@ file static class SHelper_
             }
         }
         output.Append('"');
+    }
+
+    // Replaces invalid UTF-16 sequences with U+FFFD so later UTF-8 encoding is always valid.
+    internal static string SanitizeUnicodeString(string s)
+    {
+        StringBuilder? output = null;
+        int copiedChars = 0;
+
+        foreach (var rune in s.EnumerateRunes())
+        {
+            if (rune.Value == Rune.ReplacementChar.Value &&
+                copiedChars < s.Length &&
+                s[copiedChars] != Rune.ReplacementChar.Value)
+            {
+                output ??= new StringBuilder(s.Length);
+                if (copiedChars > 0)
+                    output.Append(s, 0, copiedChars);
+                output.Append(Rune.ReplacementChar.ToString());
+                copiedChars++;
+                continue;
+            }
+
+            if (output is not null)
+                output.Append(rune.ToString());
+
+            copiedChars += rune.Utf16SequenceLength;
+        }
+
+        return output?.ToString() ?? s;
     }
 
     // Encodes bytes as a lowercase hexadecimal string.
@@ -673,6 +703,8 @@ file sealed class StringAdapter : ITypeAdapter<string>
     // empty → wire 242; nonempty → wire 243 + encode_uint32(len) + UTF-8 bytes.
     public void Encode(string input, List<byte> output)
     {
+        input = SHelper_.SanitizeUnicodeString(input);
+
         if (input.Length == 0)
         {
             output.Add(242);
