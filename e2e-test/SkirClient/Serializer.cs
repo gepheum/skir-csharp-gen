@@ -63,6 +63,20 @@ public sealed class Serializer<T>
     }
 
     /// <summary>
+    /// Deserializes a value from an already-parsed <see cref="JsonElement"/>.
+    /// When <paramref name="keepUnrecognizedValues"/> is <c>true</c>, unknown
+    /// data is preserved so a read/modify/write flow does not discard fields
+    /// added by newer schema versions.
+    /// </summary>
+    public T FromJson(
+        JsonElement element,
+        MustNameArguments _ = default,
+        bool keepUnrecognizedValues = false)
+    {
+        return _adapter.FromJson(element, keepUnrecognizedValues);
+    }
+
+    /// <summary>
     /// Deserializes a value from binary format.
     /// When <paramref name="keepUnrecognizedValues"/> is <c>true</c>, unknown
     /// data is preserved for forward-compatible round trips.

@@ -232,17 +232,7 @@ public static class Serializers
             .ToString("yyyy-MM-ddTHH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + "Z";
     }
 
-    // Encodes a non-negative length using the skir variable-length uint32 scheme.
-    //   0..=231   → single byte
-    //   232..=65535 → wire 232 + u16 LE
-    //   else      → wire 233 + u32 LE
-    private static void EncodeUint32(uint n, List<byte> output)
-    {
-        if (n <= 231) { output.Add((byte)n); }
-        else if (n <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)n))); }
-        else { output.Add(233); output.AddRange(LE(BitConverter.GetBytes(n))); }
-    }
-    internal static void EncodeUint32_(uint n, List<byte> output) => EncodeUint32(n, output);
+    internal static void EncodeUint32_(uint n, List<byte> output) => BinaryUtils.EncodeUint32(n, output);
 
     // Writes s as a JSON string literal (with surrounding quotes) using Skir escaping rules.
     private static void WriteJsonString(string s, StringBuilder output)
@@ -572,7 +562,7 @@ public static class Serializers
             else
             {
                 output.Add(245);
-                EncodeUint32((uint)input.Length, output);
+                BinaryUtils.EncodeUint32((uint)input.Length, output);
                 output.AddRange(input.ToArray());
             }
         }
@@ -690,7 +680,7 @@ public static class Serializers
             {
                 byte[] utf8 = Encoding.UTF8.GetBytes(input);
                 output.Add(243);
-                EncodeUint32((uint)utf8.Length, output);
+                BinaryUtils.EncodeUint32((uint)utf8.Length, output);
                 output.AddRange(utf8);
             }
         }
@@ -850,7 +840,7 @@ public static class Serializers
             int n = v.Length;
             if (n == 0) { output.Add(246); return; }
             if (n <= 3) output.Add((byte)(246 + n));
-            else { output.Add(250); EncodeUint32((uint)n, output); }
+            else { output.Add(250); BinaryUtils.EncodeUint32((uint)n, output); }
             foreach (var item in v) _inner.Encode(item, output);
         }
 

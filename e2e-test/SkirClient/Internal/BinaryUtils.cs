@@ -60,6 +60,24 @@ internal static class BinaryUtils
         return DecodeNumberBody(wire, data, ref offset);
     }
 
+    // Returns bytes in little-endian order regardless of host endianness.
+    private static byte[] LE(byte[] bytes)
+    {
+        if (!BitConverter.IsLittleEndian) System.Array.Reverse(bytes);
+        return bytes;
+    }
+
+    // Encodes a non-negative length using the skir variable-length uint32 scheme.
+    //   0..=231     → single byte
+    //   232..=65535 → wire 232 + u16 LE
+    //   else        → wire 233 + u32 LE
+    internal static void EncodeUint32(uint n, List<byte> output)
+    {
+        if (n <= 231) { output.Add((byte)n); }
+        else if (n <= 65535) { output.Add(232); output.AddRange(LE(BitConverter.GetBytes((ushort)n))); }
+        else { output.Add(233); output.AddRange(LE(BitConverter.GetBytes(n))); }
+    }
+
     internal static void SkipValue(byte[] data, ref int offset)
     {
         if (offset >= data.Length)
