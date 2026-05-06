@@ -64,4 +64,9 @@ public readonly struct Recursive<T>
             throw new global::System.ArgumentNullException(nameof(value));
         return new Recursive<T>(box: new Box(value));
     }
+
+    /// <summary>
+    /// Returns the wrapped value's string representation, or an empty string for <see cref="Default"/>.
+    /// </summary>
+    public override string ToString() => _box?.ToString() ?? "";
 }
