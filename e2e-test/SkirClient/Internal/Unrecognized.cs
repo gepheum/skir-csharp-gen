@@ -12,7 +12,7 @@ namespace SkirClient.Internal;
 /// this type directly.
 /// </summary>
 /// <typeparam name="T">The struct type that owns this instance.</typeparam>
-public sealed class UnrecognizedFields<T> : IEquatable<UnrecognizedFields<T>>
+public sealed class UnrecognizedFields<T>
 {
     internal UnrecognizedFormat Format { get; }
 
@@ -45,22 +45,6 @@ public sealed class UnrecognizedFields<T> : IEquatable<UnrecognizedFields<T>>
     internal static UnrecognizedFields<T> FromBytes(uint arrayLen, byte[] rawBytes) =>
         new(UnrecognizedFormat.BinaryBytes, arrayLen, rawBytes);
 
-    public bool Equals(UnrecognizedFields<T>? other) =>
-        other != null &&
-        Format == other.Format &&
-        ArrayLen == other.ArrayLen &&
-        Values.AsSpan().SequenceEqual(other.Values.AsSpan());
-
-    public override bool Equals(object? obj) => Equals(obj as UnrecognizedFields<T>);
-
-    public override int GetHashCode()
-    {
-        var hc = new HashCode();
-        hc.Add(Format);
-        hc.Add(ArrayLen);
-        hc.AddBytes(Values);
-        return hc.ToHashCode();
-    }
 }
 
 // =============================================================================
@@ -74,7 +58,7 @@ public sealed class UnrecognizedFields<T> : IEquatable<UnrecognizedFields<T>>
 /// this type directly.
 /// </summary>
 /// <typeparam name="T">The enum type that owns this instance.</typeparam>
-public sealed class UnrecognizedVariant<T> : IEquatable<UnrecognizedVariant<T>>
+public sealed class UnrecognizedVariant<T>
 {
     internal UnrecognizedFormat Format { get; }
 
@@ -108,22 +92,6 @@ public sealed class UnrecognizedVariant<T> : IEquatable<UnrecognizedVariant<T>>
     internal static UnrecognizedVariant<T> FromBytes(int number, byte[] rawBytes) =>
         new(UnrecognizedFormat.BinaryBytes, number, rawBytes);
 
-    public bool Equals(UnrecognizedVariant<T>? other) =>
-        other != null &&
-        Format == other.Format &&
-        Number == other.Number &&
-        Value.AsSpan().SequenceEqual(other.Value.AsSpan());
-
-    public override bool Equals(object? obj) => Equals(obj as UnrecognizedVariant<T>);
-
-    public override int GetHashCode()
-    {
-        var hc = new HashCode();
-        hc.Add(Format);
-        hc.Add(Number);
-        hc.AddBytes(Value);
-        return hc.ToHashCode();
-    }
 }
 
 // =============================================================================
