@@ -43,11 +43,12 @@ public sealed class RpcError : Exception
 ///     new GetUserRequest { UserId = 42 });
 /// </code>
 /// </summary>
-public sealed class ServiceClient
+public sealed class ServiceClient : IDisposable
 {
     private readonly string _serviceUrl;
     private readonly List<KeyValuePair<string, string>> _defaultHeaders = [];
     private readonly HttpClient _httpClient;
+    private bool _disposed;
 
     /// <summary>
     /// Creates a client for a service endpoint.
@@ -73,6 +74,7 @@ public sealed class ServiceClient
     /// </summary>
     public ServiceClient WithDefaultHeader(string key, string value)
     {
+        ThrowIfDisposed();
         _defaultHeaders.Add(new KeyValuePair<string, string>(key, value));
         return this;
     }
@@ -111,6 +113,7 @@ public sealed class ServiceClient
         IEnumerable<KeyValuePair<string, string>>? extraHeaders = null,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         string requestJson = method.RequestSerializer.ToJson(request);
 
         // Wire body: "MethodName:number::requestJson"
@@ -182,5 +185,24 @@ public sealed class ServiceClient
                 throw new RpcError(0, $"failed to decode response: {ex.Message}");
             }
         }
+    }
+
+    /// <summary>
+    /// Disposes the underlying HTTP resources owned by this client.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _httpClient.Dispose();
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(ServiceClient));
     }
 }

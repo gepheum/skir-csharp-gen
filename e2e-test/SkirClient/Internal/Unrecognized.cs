@@ -53,7 +53,14 @@ public sealed class UnrecognizedFields<T> : IEquatable<UnrecognizedFields<T>>
 
     public override bool Equals(object? obj) => Equals(obj as UnrecognizedFields<T>);
 
-    public override int GetHashCode() => HashCode.Combine(Format, ArrayLen, Values.Length);
+    public override int GetHashCode()
+    {
+        var hc = new HashCode();
+        hc.Add(Format);
+        hc.Add(ArrayLen);
+        hc.AddBytes(Values);
+        return hc.ToHashCode();
+    }
 }
 
 // =============================================================================
@@ -109,7 +116,14 @@ public sealed class UnrecognizedVariant<T> : IEquatable<UnrecognizedVariant<T>>
 
     public override bool Equals(object? obj) => Equals(obj as UnrecognizedVariant<T>);
 
-    public override int GetHashCode() => HashCode.Combine(Format, Number, Value.Length);
+    public override int GetHashCode()
+    {
+        var hc = new HashCode();
+        hc.Add(Format);
+        hc.Add(Number);
+        hc.AddBytes(Value);
+        return hc.ToHashCode();
+    }
 }
 
 // =============================================================================

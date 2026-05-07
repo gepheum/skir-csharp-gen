@@ -92,11 +92,7 @@ public static class Serializers
 file static class SHelper_
 {
     // Returns bytes in little-endian order regardless of host endianness.
-    internal static byte[] LE(byte[] bytes)
-    {
-        if (!BitConverter.IsLittleEndian) System.Array.Reverse(bytes);
-        return bytes;
-    }
+    internal static byte[] LE(byte[] bytes) => BinaryUtils.LE(bytes);
 
     // Encodes an i32 using the skir variable-length wire format.
     //   0..=231         → single byte
@@ -146,35 +142,10 @@ file static class SHelper_
         return DecodeNumberBody(wire, data, ref offset);
     }
 
-    internal static byte ReadU8(byte[] data, ref int offset)
-    {
-        if (offset >= data.Length) throw new InvalidOperationException("Unexpected end of input");
-        return data[offset++];
-    }
-
-    internal static ushort ReadU16(byte[] data, ref int offset)
-    {
-        if (offset + 2 > data.Length) throw new InvalidOperationException("Unexpected end of input");
-        var v = BitConverter.ToUInt16(data, offset);
-        offset += 2;
-        return v;
-    }
-
-    internal static uint ReadU32(byte[] data, ref int offset)
-    {
-        if (offset + 4 > data.Length) throw new InvalidOperationException("Unexpected end of input");
-        var v = BitConverter.ToUInt32(data, offset);
-        offset += 4;
-        return v;
-    }
-
-    internal static ulong ReadU64(byte[] data, ref int offset)
-    {
-        if (offset + 8 > data.Length) throw new InvalidOperationException("Unexpected end of input");
-        var v = BitConverter.ToUInt64(data, offset);
-        offset += 8;
-        return v;
-    }
+    internal static byte ReadU8(byte[] data, ref int offset) => BinaryUtils.ReadU8(data, ref offset);
+    internal static ushort ReadU16(byte[] data, ref int offset) => BinaryUtils.ReadU16(data, ref offset);
+    internal static uint ReadU32(byte[] data, ref int offset) => BinaryUtils.ReadU32(data, ref offset);
+    internal static ulong ReadU64(byte[] data, ref int offset) => BinaryUtils.ReadU64(data, ref offset);
 
     internal const long MinTimestampMillis = -8_640_000_000_000_000L;
     internal const long MaxTimestampMillis = 8_640_000_000_000_000L;
@@ -263,28 +234,11 @@ file static class SHelper_
     }
 
     // Encodes bytes as a lowercase hexadecimal string.
-    internal static string EncodeHex(ReadOnlySpan<byte> bytes)
-    {
-        const string HexChars = "0123456789abcdef";
-        var sb = new StringBuilder(bytes.Length * 2);
-        foreach (byte b in bytes)
-        {
-            sb.Append(HexChars[b >> 4]);
-            sb.Append(HexChars[b & 0xF]);
-        }
-        return sb.ToString();
-    }
+    internal static string EncodeHex(ReadOnlySpan<byte> bytes) =>
+        Convert.ToHexString(bytes).ToLowerInvariant();
 
     // Decodes a lowercase or uppercase hexadecimal string.
-    internal static byte[] DecodeHex(ReadOnlySpan<char> s)
-    {
-        if (s.Length % 2 != 0)
-            throw new ArgumentException($"Odd hex string length: {s.Length}");
-        byte[] result = new byte[s.Length / 2];
-        for (int i = 0; i < result.Length; i++)
-            result[i] = byte.Parse(s.Slice(i * 2, 2), System.Globalization.NumberStyles.HexNumber);
-        return result;
-    }
+    internal static byte[] DecodeHex(ReadOnlySpan<char> s) => Convert.FromHexString(s);
 }
 
 // =============================================================================
@@ -319,12 +273,8 @@ file sealed class BoolAdapter : ITypeAdapter<bool>
     public void Encode(bool input, List<byte> output) =>
         output.Add(input ? (byte)1 : (byte)0);
 
-    public bool Decode(byte[] data, ref int offset, bool keepUnrecognizedValues)
-    {
-        if (offset >= data.Length)
-            throw new InvalidOperationException("Unexpected end of input");
-        return data[offset++] != 0;
-    }
+    public bool Decode(byte[] data, ref int offset, bool keepUnrecognizedValues) =>
+        SHelper_.ReadU8(data, ref offset) != 0;
 
     public TypeDescriptor TypeDescriptor { get; } = new PrimitiveDescriptor(PrimitiveType.Bool);
 }

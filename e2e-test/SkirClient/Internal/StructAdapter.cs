@@ -99,8 +99,7 @@ public sealed class StructAdapter<T, TBuilder> : ITypeAdapter<T> where T : struc
         foreach (var f in _orderedFields) if (f.Number > maxSlot) maxSlot = f.Number;
         foreach (int r in _removedNumbers) if (r > maxSlot) maxSlot = r;
 
-        _slotToIndex = new List<int?>(maxSlot + 1);
-        for (int i = 0; i <= maxSlot; i++) _slotToIndex.Add(null);
+        _slotToIndex = new List<int?>(new int?[maxSlot + 1]);
         for (int i = 0; i < _orderedFields.Count; i++)
             _slotToIndex[_orderedFields[i].Number] = i;
 

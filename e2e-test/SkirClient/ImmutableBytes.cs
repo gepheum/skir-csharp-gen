@@ -71,7 +71,8 @@ public readonly struct ImmutableBytes : IReadOnlyList<byte>, IEquatable<Immutabl
     public static bool operator !=(ImmutableBytes left, ImmutableBytes right) => !left.Equals(right);
 
     /// <summary>Returns an enumerator over the bytes in this sequence.</summary>
-    public IEnumerator<byte> GetEnumerator() => ((IEnumerable<byte>)(Span.ToArray())).GetEnumerator();
+    public IEnumerator<byte> GetEnumerator() =>
+        ((IEnumerable<byte>)(_bytes ?? global::System.Array.Empty<byte>())).GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

@@ -96,7 +96,7 @@ public abstract class TypeDescriptor
 
     /// <summary>
     /// Returns the complete, self-describing JSON representation of this
-    /// descriptor, as produced and consumed by <see cref="ParseFromJson"/>.
+    /// descriptor, as produced and consumed by <see cref="ParseFromJson(string)"/>.
     /// </summary>
     public string AsJson() => TypeDescriptorJson.Serialize(this);
 
@@ -606,8 +606,9 @@ internal static class TypeDescriptorJson
         //   The stubs are the FINAL objects; fields are set in-place in pass 2.
         //   This lets forward references and mutual recursion work correctly.
         var idToDescriptor = new Dictionary<string, TypeDescriptor>();
+        var records = root["records"]?.AsArray() ?? [];
 
-        foreach (var recNode in root["records"]?.AsArray() ?? [])
+        foreach (var recNode in records)
         {
             var rec = recNode!.AsObject();
             var kind = GetStr(rec, "kind");
@@ -625,7 +626,7 @@ internal static class TypeDescriptorJson
         }
 
         // ── Pass 2: fill in fields / variants ─────────────────────────────────
-        foreach (var recNode in root["records"]?.AsArray() ?? [])
+        foreach (var recNode in records)
         {
             var rec = recNode!.AsObject();
             var id = GetStr(rec, "id");

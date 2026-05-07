@@ -9,7 +9,7 @@ internal static class BinaryUtils
         return data[offset++];
     }
 
-    private static ushort ReadU16(byte[] data, ref int offset)
+    internal static ushort ReadU16(byte[] data, ref int offset)
     {
         if (offset + 2 > data.Length)
             throw new InvalidOperationException("Unexpected end of input");
@@ -18,7 +18,7 @@ internal static class BinaryUtils
         return value;
     }
 
-    private static uint ReadU32(byte[] data, ref int offset)
+    internal static uint ReadU32(byte[] data, ref int offset)
     {
         if (offset + 4 > data.Length)
             throw new InvalidOperationException("Unexpected end of input");
@@ -27,7 +27,7 @@ internal static class BinaryUtils
         return value;
     }
 
-    private static ulong ReadU64(byte[] data, ref int offset)
+    internal static ulong ReadU64(byte[] data, ref int offset)
     {
         if (offset + 8 > data.Length)
             throw new InvalidOperationException("Unexpected end of input");
@@ -61,7 +61,7 @@ internal static class BinaryUtils
     }
 
     // Returns bytes in little-endian order regardless of host endianness.
-    private static byte[] LE(byte[] bytes)
+    internal static byte[] LE(byte[] bytes)
     {
         if (!BitConverter.IsLittleEndian) System.Array.Reverse(bytes);
         return bytes;
@@ -128,6 +128,10 @@ internal static class BinaryUtils
                     return;
                 }
             case 247:
+            case 251:
+            case 252:
+            case 253:
+            case 254:
                 SkipValue(data, ref offset);
                 return;
             case 248:
@@ -146,12 +150,6 @@ internal static class BinaryUtils
                         SkipValue(data, ref offset);
                     return;
                 }
-            case 251:
-            case 252:
-            case 253:
-            case 254:
-                SkipValue(data, ref offset);
-                return;
             default:
                 return;
         }
