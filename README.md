@@ -274,3 +274,4 @@ var addUser = Methods.AddUser;
 Console.WriteLine(addUser.Name);   // AddUser
 Console.WriteLine(addUser.Number); // 23456
 ```
+
